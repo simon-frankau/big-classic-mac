@@ -30,6 +30,8 @@ Toolbox dispatch table is at 0x600.
 
 ... Actually seems to be 0xe00 or 0x400 in the ROM!
 
+SCSI vars seem to be at 0xc00, compared to what almanac says.
+
 ### Boot sequence
 
 The system initialization sequence is subject to change; the
