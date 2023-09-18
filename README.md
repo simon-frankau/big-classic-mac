@@ -147,3 +147,5 @@ Then
 ## References
 
  * Apple Guide to the Macintosh Family Hardware 2e (PDF)
+ * http://www.mac.linux-m68k.org/devel/macalmanac.php - Mac Almanac
+   II, including low variables and trap numbers.
