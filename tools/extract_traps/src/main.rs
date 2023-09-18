@@ -155,15 +155,24 @@ fn main() -> anyhow::Result<()> {
     let mut d = Decoder::new(&data);
 
     for (idx, addr) in (&mut d).enumerate() {
-        let name = if let Some(name) = traps.get(&idx) {
+	let opt_name = traps.get(&idx);
+
+	if addr == UNIMPL && opt_name.is_none() {
+	    // No name found and unimplemented function?
+	    // No label needed!
+	    continue;
+	}
+	
+        let name = if let Some(name) = opt_name {
             name.clone()
         } else {
-            format!("Unk_{:04x}", idx_to_trap(idx))
+            format!("_Unk_{:04X}", idx_to_trap(idx))
         };
-        println!("{} 0x{:06x}", name, addr);
+	
+        println!("createLabel(currentProgram.parseAddress(\"0x{:06X}\")[0], \"{}\", True)", addr, name);
     }
 
-    eprintln!("Final table pointer: 0x{:06x}", d.table);
+    eprintln!("Final table pointer: 0x{:06X}", d.table);
 
     Ok(())
 }
