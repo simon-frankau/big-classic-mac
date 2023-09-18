@@ -526,7 +526,7 @@ A9B7,_CloseDeskAcc
 A9B8,_GetPattern
 A9B9,_GetCursor
 A9BA,_GetString
-A9BB,GetIcon
+A9BB,_GetIcon
 A9BC,_GetPicture
 A9BD,_GetNewWindow
 A9BE,_GetNewControl
