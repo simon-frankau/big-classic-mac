@@ -4,7 +4,10 @@
 // Decodes the trap table in the ROM.
 //
 
+use std::collections::HashMap;
 use std::fs;
+use std::io::{self, BufRead};
+use std::path::Path;
 
 // Offset from start of ROM where the offset for the table is.
 const TABLE_OFFSET: usize = 0x22;
@@ -74,21 +77,93 @@ impl<'a> Iterator for Decoder<'a> {
         }
 
         self.pointer += offset * 2;
-        if offset & 0x8000 != 0x0000 {
-            panic!("Reverse!");
+	// DIY signed arithmetic as I'm lazy.
+        if offset & 0x4000 != 0x0000 {
+	    self.pointer -= 0x10000;
         }
         Some(self.pointer)
     }
 }
 
+fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<fs::File>>>
+where
+    P: AsRef<Path>,
+{
+    let file = fs::File::open(filename)?;
+    Ok(io::BufReader::new(file).lines())
+}
+
+fn trap_to_idx(trap_num: u32) -> usize {
+    (if trap_num & 0x0800 != 0 {
+        // Toolbox
+        trap_num & 0x1ff
+    } else {
+        // OS
+        (trap_num & 0xff) + 0x200
+    }) as usize
+}
+
+fn idx_to_trap(idx: usize) -> u32 {
+    (if idx >= 0x200 {
+        0xa000 + idx - 0x200
+    } else {
+        0xa800 + idx
+    }) as u32
+}
+
+fn read_traps<P>(filename: P) -> anyhow::Result<HashMap<usize, String>>
+where
+    P: AsRef<Path>,
+{
+    let lines = read_lines(filename)?;
+    let mut map = HashMap::new();
+    for line in lines {
+        let line_unwrapped = line?;
+        let mut bits = line_unwrapped.split(',');
+        let addr_str = bits.next().unwrap();
+        let fn_str = bits.next().unwrap();
+        assert_eq!(bits.next(), None);
+        if let Some(existing) = map.insert(
+            trap_to_idx(u32::from_str_radix(addr_str, 16)?),
+            fn_str.to_string(),
+        ) {
+            // "A12F,_PPostEvent" was taken out of "trap_names.txt" as
+            // it triggered this, and it's clearly the same trap under
+            // a different name (vs. "_PostEvent"), with different
+            // return conventions.
+            //
+            // Ditto "A87D,_CloseCPort" with ClosePort.
+            //
+            // "FrameRoundRect" should be A8B0, the Almanac is
+            // incorrect; this check found something real!
+            //
+            // Synonyms "A9EB,_FP68K" and "A9EC,_Elems68K" also
+            // removed.
+            panic!(
+                "Multiple entries for 0x{}: {} vs {}",
+                addr_str, fn_str, existing
+            );
+        }
+    }
+    Ok(map)
+}
+
 fn main() -> anyhow::Result<()> {
+    let traps = read_traps("trap_names.txt")?;
     let data = fs::read("../../ROM.sefdhd")?;
 
-    let d = Decoder::new(&data);
+    let mut d = Decoder::new(&data);
 
-    for addr in d {
-        println!("0x{:6x}", addr);
+    for (idx, addr) in (&mut d).enumerate() {
+        let name = if let Some(name) = traps.get(&idx) {
+            name.clone()
+        } else {
+            format!("Unk_{:04x}", idx_to_trap(idx))
+        };
+        println!("{} 0x{:06x}", name, addr);
     }
+
+    eprintln!("Final table pointer: 0x{:06x}", d.table);
 
     Ok(())
 }
