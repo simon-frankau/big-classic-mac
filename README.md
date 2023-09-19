@@ -5,6 +5,21 @@ hardware (which is possible because the ROM abstracts hardware away),
 I need to understand the ROM in order to patch it. This is the
 dissassembly of the ROM.
 
+## Ghidra hacking
+
+A-line traps are an integral part of the Mac ROM code, but Ghidra
+doesn't recognise them, it views them as invalid instructions. To
+handle this, I added the A-line traps as an instruction type in
+Ghidra's 68000 definition. You may also need it to load the
+disassembly.
+
+To do this, I added the following line to `68000.sinc` (after
+`addx.l`, to keep alphabetical order):
+
+```
+:aline "#"^op015                is op=10 & op015                { __m68k_trap(10:1); }
+```
+
 ## Useful notes
 
 ### Misc
