@@ -1,17 +1,17 @@
 # Apple SE FDHD ROM analysis
 
-In order to build a Mac emulator that doesn't fully emulate the
-hardware (which is possible because the ROM abstracts hardware away),
-I need to understand the ROM in order to patch it. This is the
-dissassembly of the ROM.
+In order to build a Mac clone that doesn't fully emulate the hardware
+(which is possible because the ROM abstracts hardware away), I need to
+understand the ROM in order to patch it. This is the dissassembly of
+the ROM.
 
 ## Ghidra hacking
 
 A-line traps are an integral part of the Mac ROM code, but Ghidra
 doesn't recognise them, it views them as invalid instructions. To
-handle this, I added the A-line traps as an instruction type in
+handle this, **I added the A-line traps as an instruction type in
 Ghidra's 68000 definition. You may also need it to load the
-disassembly.
+disassembly.**
 
 To do this, I added the following line to `68000.sinc` (after
 `addx.l`, to keep alphabetical order):
@@ -20,7 +20,53 @@ To do this, I added the following line to `68000.sinc` (after
 :aline "#"^op015                is op=10 & op015                { __m68k_trap(10:1); }
 ```
 
-## Useful notes
+## The plan
+
+My planned approach looks something like this:
+
+ * Goal 0: Establish base camp ☑️
+   * Trace the reset vector a little to get the lay of the land. ☑️
+   * Look up the memory map, start identifying some hardware access. ☑️
+   * Import known symbols and trap names etc. ☑️
+ * Goal 1: Identify all code. ☑️
+   * Find big chunks of embedded data - pictures, unused areas, etc. ☑️
+   * Identify the rest of the resource file ☑️
+   * Try to identify missed code, looking for stray 4e75 etc. ☑️
+ * Goal 2: Find how it's referenced.
+   * Identify all functions that are currently unreferenced.
+   * Work out how they're referenced!
+ * Goal 3: Identify hack points
+   * Find all absolute references to ROM, allowing it to be relocated.
+   * Find all references to HW, allowing it to be replaced.
+
+### Other TODOs
+
+ * Search for unreferenced code -  look for bra, b, rts, jmp.
+ * Check inferred flows, see if Ghidra is right.
+ * Look for remaing 4 char codes treated as longs.
+ * Search for "0x4" to find absolute ROM references.
+ * Investigate structure of FONT resources.
+
+## Notes
+
+ * The ROM contains a set of resources, documented in
+   [resources.md](./resources.md).
+ * Despite what various docs say, the trap tables are at 0x400 and
+   0xE00 on the Mac SE FDHD.
+ * SCSI variables appear to be at 0xC00.
+ * In my reversing of the ROM, trap function names start with an
+   underscore.
+
+### Memory map
+
+ * 0x000000-0x400000 RAM
+ * 0x400000-0x440000 ROM
+ * 0x580000-0x600000 SCSI
+ * 0x900000-0xA00000 SCC read
+ * 0xA00000-0xB00000 Reserved
+ * 0xB00000-0xC00000 SCC write
+ * 0xD00000-0xE00000 IWM
+ * 0xE80000-0xF00000 VIA
 
 ### Misc
 
@@ -40,14 +86,9 @@ models have alternate screen buffer!
 
 TODO: ROM overlay in chapter 6.
 
-OS dispatch table is at 0x200.
-Toolbox dispatch table is at 0x600.
-
-... Actually seems to be 0xe00 or 0x400 in the ROM!
-
-SCSI vars seem to be at 0xc00, compared to what almanac says.
-
 ### Boot sequence
+
+Quoted from *Apple Guide to the Macintosh Family Hardware 2e*:
 
 The system initialization sequence is subject to change; the
 information in this section is provided for informational purposes
@@ -90,7 +131,7 @@ only.
 5. The initialization code chooses the boot device, and calls the boot
    blocks to begin initialization of the System Software.
 
-Then
+*Then*
 
 1. The system startup code looks for an appropriate startup device. It
    first checks the internal 3.5-inch floppy drive. If a disk is
@@ -150,19 +191,12 @@ Then
     large, unsegmented application heap, which is divided into
     partitions as applications start up.
 
-### Memory map
-
- * 0x000000-0x400000 RAM
- * 0x400000-0x440000 ROM
- * 0x580000-0x600000 SCSI
- * 0x900000-0xA00000 SCC read
- * 0xA00000-0xB00000 Reserved
- * 0xB00000-0xC00000 SCC write
- * 0xD00000-0xE00000 IWM
- * 0xE80000-0xF00000 VIA
-
 ## References
 
  * Apple Guide to the Macintosh Family Hardware 2e (PDF)
+ * All the Inside Macintosh series
  * http://www.mac.linux-m68k.org/devel/macalmanac.php - Mac Almanac
    II, including low variables and trap numbers.
+ * Easter Egg:
+   * https://eeggs.com/items/2258.html
+   * https://www.nycresistor.com/2012/08/21/ghosts-in-the-rom/
