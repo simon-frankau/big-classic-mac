@@ -36,7 +36,7 @@ My planned approach looks something like this:
    * Identify all functions that are currently unreferenced.
    * Work out how they're referenced!
  * Goal 3: Identify hack points
-   * Find all absolute references to ROM, allowing it to be relocated.
+   * Find all absolute references to ROM, allowing it to be relocated. ☑️
    * Find all references to HW, allowing it to be replaced.
 
 ### Other TODOs
@@ -47,7 +47,7 @@ My planned approach looks something like this:
  * Search for "0x4" to find absolute ROM references.
  * Investigate structure of FONT resources.
 
-## Notes
+## Notes for reversing
 
  * The ROM contains a set of resources, documented in
    [resources.md](./resources.md).
@@ -56,6 +56,12 @@ My planned approach looks something like this:
  * SCSI variables appear to be at 0xC00.
  * In my reversing of the ROM, trap function names start with an
    underscore.
+ * Access to 0xf8XXXX marked with "High memory reference"
+ * Access to 0x4XXXXX marked with "Absolute ROM reference"
+ * Access to 0x3fXXXX marked with "High RAM reference"
+   * It looks like these references are before we know how much RAM
+     there is, any it relies on mirroring if there's <4MB to hit the
+     top end of whatever RAM is available.
 
 ### Memory map
 
@@ -190,6 +196,11 @@ only.
     time the computer was shut down. The Memory Manager sets up a
     large, unsegmented application heap, which is divided into
     partitions as applications start up.
+
+## Notes for ROM-hacking
+
+ * 0x0fXXXX addresses probed for debug stuff will clash with a high
+   ROM.
 
 ## References
 
