@@ -39,6 +39,11 @@ My planned approach looks something like this:
    * Find all absolute references to ROM, allowing it to be relocated. ☑️
    * Find all references to HW, allowing it to be replaced.
 
+The plan has been somewhat adjusted by the fact that there are a bunch
+of absolute ROM references in the System software, so I'm building
+patching tooling for the System files, too. Relevant files live in the
+'system' directory.
+
 ### Other TODOs
 
  * Search for unreferenced code -  look for bra, b, rts, jmp.
