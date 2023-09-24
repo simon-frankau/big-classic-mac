@@ -199,7 +199,7 @@ only.
 
 ## Notes for ROM-hacking
 
- * 0x0fXXXX addresses probed for debug stuff will clash with a high
+ * 0xfXXXXX addresses probed for debug stuff will clash with a high
    ROM.
 
 ## References
