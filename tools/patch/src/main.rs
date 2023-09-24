@@ -6,6 +6,7 @@
 
 use std::fs;
 
+use anyhow::bail;
 use clap::{Parser, Subcommand};
 
 ////////////////////////////////////////////////////////////////////////
@@ -28,6 +29,7 @@ enum Commands {
     Rom,
     Ptch34,
     Ptch630,
+    Disk601,
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -49,7 +51,7 @@ impl<'a> Patch<'a> {
             &target[..self.before.len()],
             "Patch 'before' doesn't match ROM"
         );
-        target[..self.after.len()].copy_from_slice(&self.after);
+        target[..self.after.len()].copy_from_slice(self.after);
     }
 }
 
@@ -69,10 +71,51 @@ impl<'a> PatternPatch<'a> {
         for idx in 0..(data.len() - self.pattern.len()) {
             let curr = &mut data[idx..];
             if curr.starts_with(self.pattern) {
-                curr[..self.replacement.len()].copy_from_slice(&self.replacement);
+                curr[..self.replacement.len()].copy_from_slice(self.replacement);
                 println!("Patched at 0x{:06x}", idx);
             }
         }
+    }
+}
+
+fn find_resource(
+    prefix: [u8; 4],
+    res_type: [char; 4],
+    res_id: i16,
+    data: &[u8],
+) -> anyhow::Result<usize> {
+    let needle = [
+        prefix[0],
+        prefix[1],
+        prefix[2],
+        prefix[3],
+        res_type[0] as u8,
+        res_type[1] as u8,
+        res_type[2] as u8,
+        res_type[3] as u8,
+        (res_id >> 8) as u8,
+        (res_id & 0xff) as u8,
+    ];
+    let mut possibilities = Vec::new();
+    for idx in 0..(data.len() - 10) {
+        if data[idx..].starts_with(&needle) {
+            possibilities.push(idx);
+        }
+    }
+
+    match possibilities.len() {
+        0 => bail!(
+            "No match for resource {} {}",
+            String::from_iter(res_type),
+            res_id
+        ),
+        1 => Ok(possibilities[0]),
+        _ => bail!(
+            "Multiple matches for resource {} {}: {:?}",
+            String::from_iter(res_type),
+            res_id,
+            possibilities
+        ),
     }
 }
 
@@ -105,18 +148,19 @@ const PTCH_34_PATCHES: [Patch; 4] = [
 
 fn patch_ptch_34() -> anyhow::Result<()> {
     let mut data = fs::read("../../system/6.0.1/ptch_34")?;
-
-    for (idx, patch) in PTCH_34_PATCHES.iter().enumerate() {
-        println!("Applying patch #{}: {:?}", idx, patch);
-        patch.apply(&mut data);
-    }
-
+    patch_ptch_34_aux(&mut data);
     fs::write("../../system/6.0.1/ptch_34.patched", data)?;
-
     Ok(())
 }
 
-const PTCH_630_PATCHES: [PatternPatch; 16] = [
+fn patch_ptch_34_aux(data: &mut [u8]) {
+    for (idx, patch) in PTCH_34_PATCHES.iter().enumerate() {
+        println!("Applying patch #{}: {:?}", idx, patch);
+        patch.apply(data);
+    }
+}
+
+const PTCH_630_PATCHES: [PatternPatch; 28] = [
     // JMP
     PatternPatch {
         pattern: &[0x4e, 0xf9, 0x00, 0x40],
@@ -168,7 +212,7 @@ const PTCH_630_PATCHES: [PatternPatch; 16] = [
         pattern: &[0x41, 0xf9, 0x00, 0x43],
         replacement: &[0x41, 0xf9, 0x00, 0xfb],
     },
-    // CMP.I
+    // CMP.I variant 1
     PatternPatch {
         pattern: &[0x0c, 0x97, 0x00, 0x40],
         replacement: &[0x0c, 0x97, 0x00, 0xf8],
@@ -185,21 +229,84 @@ const PTCH_630_PATCHES: [PatternPatch; 16] = [
         pattern: &[0x0c, 0x97, 0x00, 0x43],
         replacement: &[0x0c, 0x97, 0x00, 0xfb],
     },
+    // CMP.I variant 2
+    PatternPatch {
+        pattern: &[0x0c, 0x96, 0x00, 0x40],
+        replacement: &[0x0c, 0x96, 0x00, 0xf8],
+    },
+    PatternPatch {
+        pattern: &[0x0c, 0x96, 0x00, 0x41],
+        replacement: &[0x0c, 0x96, 0x00, 0xf9],
+    },
+    PatternPatch {
+        pattern: &[0x0c, 0x96, 0x00, 0x42],
+        replacement: &[0x0c, 0x96, 0x00, 0xfa],
+    },
+    PatternPatch {
+        pattern: &[0x0c, 0x96, 0x00, 0x43],
+        replacement: &[0x0c, 0x96, 0x00, 0xfb],
+    },
+    // CMP.I variant 3
+    PatternPatch {
+        pattern: &[0x0c, 0xaf, 0x00, 0x40],
+        replacement: &[0x0c, 0xaf, 0x00, 0xf8],
+    },
+    PatternPatch {
+        pattern: &[0x0c, 0xaf, 0x00, 0x41],
+        replacement: &[0x0c, 0xaf, 0x00, 0xf9],
+    },
+    PatternPatch {
+        pattern: &[0x0c, 0xaf, 0x00, 0x42],
+        replacement: &[0x0c, 0xaf, 0x00, 0xfa],
+    },
+    PatternPatch {
+        pattern: &[0x0c, 0xaf, 0x00, 0x43],
+        replacement: &[0x0c, 0xaf, 0x00, 0xfb],
+    },
+    // PEA
+    PatternPatch {
+        pattern: &[0x48, 0x79, 0x00, 0x40],
+        replacement: &[0x48, 0x79, 0x00, 0xf8],
+    },
+    PatternPatch {
+        pattern: &[0x48, 0x79, 0x00, 0x41],
+        replacement: &[0x48, 0x79, 0x00, 0xf9],
+    },
+    PatternPatch {
+        pattern: &[0x48, 0x79, 0x00, 0x42],
+        replacement: &[0x48, 0x79, 0x00, 0xfa],
+    },
+    PatternPatch {
+        pattern: &[0x48, 0x79, 0x00, 0x43],
+        replacement: &[0x48, 0x79, 0x00, 0xfb],
+    },
 ];
 
 fn patch_ptch_630() -> anyhow::Result<()> {
     let mut data = fs::read("../../system/6.0.1/PTCH_630")?;
-
-    for (idx, patch) in PTCH_630_PATCHES.iter().enumerate() {
-        println!("Applying patch #{}: {:?}", idx, patch);
-        patch.apply(&mut data);
-    }
-
+    patch_ptch_630_aux(&mut data);
     fs::write("../../system/6.0.1/PTCH_630.patched", data)?;
-
     Ok(())
 }
 
+fn patch_ptch_630_aux(data: &mut [u8]) {
+    for (idx, patch) in PTCH_630_PATCHES.iter().enumerate() {
+        println!("Applying patch #{}: {:?}", idx, patch);
+        patch.apply(data);
+    }
+}
+
+fn patch_disk_601() -> anyhow::Result<()> {
+    let mut data = fs::read("../../system/6.0.1/tools.dsk")?;
+
+    let ptch_34_idx = find_resource([0x60, 0x00, 0x06, 0xe6], ['p', 't', 'c', 'h'], 34, &data)?;
+    patch_ptch_34_aux(&mut data[ptch_34_idx..]);
+    let ptch_630_idx = find_resource([0x60, 0x00, 0x03c, 0xce], ['P', 'T', 'C', 'H'], 630, &data)?;
+    patch_ptch_630_aux(&mut data[ptch_630_idx..]);
+
+    fs::write("../../system/6.0.1/tools.dsk.patched", data)?;
+    Ok(())
+}
 ///////////////////////////////////////////////////////////////////////
 // ROM patching.
 //
@@ -342,6 +449,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Rom => patch_rom()?,
         Commands::Ptch34 => patch_ptch_34()?,
         Commands::Ptch630 => patch_ptch_630()?,
+        Commands::Disk601 => patch_disk_601()?,
     }
 
     Ok(())

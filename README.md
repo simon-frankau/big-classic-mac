@@ -3,7 +3,31 @@
 In order to build a Mac clone that doesn't fully emulate the hardware
 (which is possible because the ROM abstracts hardware away), I need to
 understand the ROM in order to patch it. This is the dissassembly of
-the ROM.
+the ROM and relevant other resources that make absoluate references to
+the ROM, and tools to patch the ROM/resources.
+
+## Current state
+
+The `patch` tool will patch the SE FDHD ROM and System 6.0.1 resources
+such that it'll boot to Finder under a hacked-up copy of Basilisk II
+(TODO: Tidy up and publish those hacks.)
+
+The ROM is moved from 0x400000 to 0xf80000.
+
+The references to debug tooling, around 0xf80000, were moved to
+0xfc0000, to make room for the ROM.
+
+### TODO
+
+While the longer term plans are to not just move the ROM but also redo
+all hardware access, for now I want to support ROM relocation
+solidly. That entails:
+
+ * Finishing the last few absolute accesses to the old ROM location in
+   the ROM.
+ * Searching the 6.0.1 System/Finder for other absolute references,
+   not just those that block booting.
+ * Get System 7 booting with a relocated ROM.
 
 ## Ghidra hacking
 
@@ -49,7 +73,6 @@ patching tooling for the System files, too. Relevant files live in the
  * Search for unreferenced code -  look for bra, b, rts, jmp.
  * Check inferred flows, see if Ghidra is right.
  * Look for remaing 4 char codes treated as longs.
- * Search for "0x4" to find absolute ROM references.
  * Investigate structure of FONT resources.
 
 ## Notes for reversing
@@ -116,7 +139,7 @@ only.
    various control panel settings and port configurations.
 
    The initialization code determines the global timing variables,
-   TimeDBRA, TimeSCCDB, andTimeSCSIDB. (See “Global Timing Variables”
+   TimeDBRA, TimeSCCDB, and TimeSCSIDB. (See “Global Timing Variables”
    on page 9-9 for more information) and initializes the Resource
    Manager, Notification Manager, Time Manager, and Deferred Task
    Manager.
@@ -202,11 +225,6 @@ only.
     large, unsegmented application heap, which is divided into
     partitions as applications start up.
 
-## Notes for ROM-hacking
-
- * 0xfXXXXX addresses probed for debug stuff will clash with a high
-   ROM.
-
 ## References
 
  * Apple Guide to the Macintosh Family Hardware 2e (PDF)
@@ -216,3 +234,5 @@ only.
  * Easter Egg:
    * https://eeggs.com/items/2258.html
    * https://www.nycresistor.com/2012/08/21/ghosts-in-the-rom/
+ * https://github.com/unsound/hfsexplorer - for extracting files and
+   resources from HFS disks.
