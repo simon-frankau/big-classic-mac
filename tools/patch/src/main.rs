@@ -27,8 +27,13 @@ struct Cli {
 enum Commands {
     /// Patch a ROM
     Rom,
+    // Patch an individual resource.
+    Boot1,
     Ptch34,
     Ptch630,
+    Cach1,
+    Ptch3,
+    // Patch a disk containing resources.
     Disk601,
 }
 
@@ -83,21 +88,25 @@ struct ArrayPatch<'a> {
     start_addr: usize,
     // End address is inclusive.
     end_addr: usize,
-    step:usize,
+    step: usize,
     before: &'a [u8],
     after: &'a [u8],
-
 }
 
 impl<'a> ArrayPatch<'a> {
     fn apply(&self, data: &mut [u8]) {
-	let mut addr = self.start_addr;
-	while addr <= self.end_addr {
-	    print!(" 0x{:06x}", addr);
-	    Patch { addr, before: self.before, after: self.after }.apply(data);
-	    addr += self.step;
-	}
-	println!();
+        let mut addr = self.start_addr;
+        while addr <= self.end_addr {
+            print!(" 0x{:06x}", addr);
+            Patch {
+                addr,
+                before: self.before,
+                after: self.after,
+            }
+            .apply(data);
+            addr += self.step;
+        }
+        println!();
     }
 }
 
@@ -146,6 +155,26 @@ fn find_resource(
 // Resource patching.
 //
 
+const BOOT_1_PATCHES: [Patch; 1] = [Patch {
+    addr: 0x2ea,
+    before: &[0x00, 0x40],
+    after: &[0x00, 0xf8],
+}];
+
+fn patch_boot_1() -> anyhow::Result<()> {
+    let mut data = fs::read("../../system/6.0.1/boot_1")?;
+    patch_boot_1_aux(&mut data);
+    fs::write("../../system/6.0.1/boot_1.patched", data)?;
+    Ok(())
+}
+
+fn patch_boot_1_aux(data: &mut [u8]) {
+    for (idx, patch) in BOOT_1_PATCHES.iter().enumerate() {
+        println!("Applying patch #{}: {:?}", idx, patch);
+        patch.apply(data);
+    }
+}
+
 const PTCH_34_PATCHES: [Patch; 4] = [
     Patch {
         addr: 0x074e,
@@ -183,7 +212,7 @@ fn patch_ptch_34_aux(data: &mut [u8]) {
     }
 }
 
-const PTCH_630_PATCHES: [PatternPatch; 28] = [
+const PTCH_630_PATCHES: [PatternPatch; 44] = [
     // JMP
     PatternPatch {
         pattern: &[0x4e, 0xf9, 0x00, 0x40],
@@ -286,6 +315,40 @@ const PTCH_630_PATCHES: [PatternPatch; 28] = [
         pattern: &[0x0c, 0xaf, 0x00, 0x43],
         replacement: &[0x0c, 0xaf, 0x00, 0xfb],
     },
+    // CMP.I variant 4
+    PatternPatch {
+        pattern: &[0x0c, 0x81, 0x00, 0x40],
+        replacement: &[0x0c, 0x81, 0x00, 0xf8],
+    },
+    PatternPatch {
+        pattern: &[0x0c, 0x81, 0x00, 0x41],
+        replacement: &[0x0c, 0x81, 0x00, 0xf9],
+    },
+    PatternPatch {
+        pattern: &[0x0c, 0x81, 0x00, 0x42],
+        replacement: &[0x0c, 0x81, 0x00, 0xfa],
+    },
+    PatternPatch {
+        pattern: &[0x0c, 0x81, 0x00, 0x43],
+        replacement: &[0x0c, 0x81, 0x00, 0xfb],
+    },
+    // CMP.I variant 5
+    PatternPatch {
+        pattern: &[0x0c, 0x80, 0x00, 0x40],
+        replacement: &[0x0c, 0x80, 0x00, 0xf8],
+    },
+    PatternPatch {
+        pattern: &[0x0c, 0x80, 0x00, 0x41],
+        replacement: &[0x0c, 0x80, 0x00, 0xf9],
+    },
+    PatternPatch {
+        pattern: &[0x0c, 0x80, 0x00, 0x42],
+        replacement: &[0x0c, 0x80, 0x00, 0xfa],
+    },
+    PatternPatch {
+        pattern: &[0x0c, 0x80, 0x00, 0x43],
+        replacement: &[0x0c, 0x80, 0x00, 0xfb],
+    },
     // PEA
     PatternPatch {
         pattern: &[0x48, 0x79, 0x00, 0x40],
@@ -303,6 +366,40 @@ const PTCH_630_PATCHES: [PatternPatch; 28] = [
         pattern: &[0x48, 0x79, 0x00, 0x43],
         replacement: &[0x48, 0x79, 0x00, 0xfb],
     },
+    // MOV.L, variant #1
+    PatternPatch {
+        pattern: &[0x2f, 0x3c, 0x00, 0x40],
+        replacement: &[0x2f, 0x3c, 0x00, 0xf8],
+    },
+    PatternPatch {
+        pattern: &[0x2f, 0x3c, 0x00, 0x41],
+        replacement: &[0x2f, 0x3c, 0x00, 0xf9],
+    },
+    PatternPatch {
+        pattern: &[0x2f, 0x3c, 0x00, 0x42],
+        replacement: &[0x2f, 0x3c, 0x00, 0xfa],
+    },
+    PatternPatch {
+        pattern: &[0x2f, 0x3c, 0x00, 0x43],
+        replacement: &[0x2f, 0x3c, 0x00, 0xfb],
+    },
+    // MOV.L, variant #2
+    PatternPatch {
+        pattern: &[0x20, 0x7c, 0x00, 0x40],
+        replacement: &[0x20, 0x7c, 0x00, 0xf8],
+    },
+    PatternPatch {
+        pattern: &[0x20, 0x7c, 0x00, 0x41],
+        replacement: &[0x20, 0x7c, 0x00, 0xf9],
+    },
+    PatternPatch {
+        pattern: &[0x20, 0x7c, 0x00, 0x42],
+        replacement: &[0x20, 0x7c, 0x00, 0xfa],
+    },
+    PatternPatch {
+        pattern: &[0x20, 0x7c, 0x00, 0x43],
+        replacement: &[0x20, 0x7c, 0x00, 0xfb],
+    },
 ];
 
 fn patch_ptch_630() -> anyhow::Result<()> {
@@ -319,6 +416,65 @@ fn patch_ptch_630_aux(data: &mut [u8]) {
     }
 }
 
+const CACH_1_PATCHES: [Patch; 2] = [
+    Patch {
+        addr: 0x58,
+        before: &[0x00, 0x40],
+        after: &[0x00, 0xf8],
+    },
+    Patch {
+        addr: 0x2b6,
+        before: &[0x00, 0x40],
+        after: &[0x00, 0xf8],
+    },
+];
+
+fn patch_cach_1() -> anyhow::Result<()> {
+    let mut data = fs::read("../../system/6.0.1/CACH_1")?;
+    patch_cach_1_aux(&mut data);
+    fs::write("../../system/6.0.1/CACH_1.patched", data)?;
+    Ok(())
+}
+
+fn patch_cach_1_aux(data: &mut [u8]) {
+    for (idx, patch) in CACH_1_PATCHES.iter().enumerate() {
+        println!("Applying patch #{}: {:?}", idx, patch);
+        patch.apply(data);
+    }
+}
+
+const PTCH_3_PATCHES: [Patch; 2] = [
+    Patch {
+        addr: 0x19d6,
+        before: &[0x00, 0x40],
+        after: &[0x00, 0xf8],
+    },
+    Patch {
+        addr: 0x19e4,
+        before: &[0x00, 0x40],
+        after: &[0x00, 0xf8],
+    },
+];
+
+fn patch_ptch_3() -> anyhow::Result<()> {
+    let mut data = fs::read("../../system/6.0.1/ptch_3")?;
+    patch_ptch_3_aux(&mut data);
+    fs::write("../../system/6.0.1/ptch_3.patched", data)?;
+    Ok(())
+}
+
+fn patch_ptch_3_aux(data: &mut [u8]) {
+    for (idx, patch) in PTCH_3_PATCHES.iter().enumerate() {
+        println!("Applying patch #{}: {:?}", idx, patch);
+        patch.apply(data);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////
+// Disk patching.
+//
+
+// TODO: Patch the other resources, too.
 fn patch_disk_601() -> anyhow::Result<()> {
     let mut data = fs::read("../../system/6.0.1/tools.dsk")?;
 
@@ -330,6 +486,9 @@ fn patch_disk_601() -> anyhow::Result<()> {
     fs::write("../../system/6.0.1/tools.dsk.patched", data)?;
     Ok(())
 }
+
+
+
 ///////////////////////////////////////////////////////////////////////
 // ROM patching.
 //
@@ -432,9 +591,27 @@ const ROM_PATCHES: [Patch; 18] = [
 ];
 
 const ROM_ARRAY_PATCHES: [ArrayPatch; 3] = [
-    ArrayPatch { start_addr: 0x019ec + 1, end_addr: 0x01ae4 + 1, step: 4, before: &[0x40], after: &[0xf8] },
-    ArrayPatch { start_addr: 0x36bc6 + 3, end_addr: 0x36c0e + 3, step: 6, before: &[0x43], after: &[0xfb] },
-    ArrayPatch { start_addr: 0x3d038 + 3, end_addr: 0x3d08c + 3, step: 6, before: &[0x43], after: &[0xfb] },
+    ArrayPatch {
+        start_addr: 0x019ec + 1,
+        end_addr: 0x01ae4 + 1,
+        step: 4,
+        before: &[0x40],
+        after: &[0xf8],
+    },
+    ArrayPatch {
+        start_addr: 0x36bc6 + 3,
+        end_addr: 0x36c0e + 3,
+        step: 6,
+        before: &[0x43],
+        after: &[0xfb],
+    },
+    ArrayPatch {
+        start_addr: 0x3d038 + 3,
+        end_addr: 0x3d08c + 3,
+        step: 6,
+        before: &[0x43],
+        after: &[0xfb],
+    },
 ];
 
 fn patch_rom() -> anyhow::Result<()> {
@@ -446,10 +623,10 @@ fn patch_rom() -> anyhow::Result<()> {
     }
 
     for (idx, patch) in ROM_ARRAY_PATCHES.iter().enumerate() {
-	println!("Applying array patch #{}: {:?}", idx, patch);
-	patch.apply(&mut data);
+        println!("Applying array patch #{}: {:?}", idx, patch);
+        patch.apply(&mut data);
     }
-    
+
     fs::write("../../ROM.patched", data)?;
 
     Ok(())
@@ -464,8 +641,11 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Rom => patch_rom()?,
+        Commands::Boot1 => patch_boot_1()?,
         Commands::Ptch34 => patch_ptch_34()?,
         Commands::Ptch630 => patch_ptch_630()?,
+        Commands::Cach1 => patch_cach_1()?,
+        Commands::Ptch3 => patch_ptch_3()?,
         Commands::Disk601 => patch_disk_601()?,
     }
 
