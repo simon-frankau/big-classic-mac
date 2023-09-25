@@ -78,6 +78,29 @@ impl<'a> PatternPatch<'a> {
     }
 }
 
+#[derive(Debug)]
+struct ArrayPatch<'a> {
+    start_addr: usize,
+    // End address is inclusive.
+    end_addr: usize,
+    step:usize,
+    before: &'a [u8],
+    after: &'a [u8],
+
+}
+
+impl<'a> ArrayPatch<'a> {
+    fn apply(&self, data: &mut [u8]) {
+	let mut addr = self.start_addr;
+	while addr <= self.end_addr {
+	    print!(" 0x{:06x}", addr);
+	    Patch { addr, before: self.before, after: self.after }.apply(data);
+	    addr += self.step;
+	}
+	println!();
+    }
+}
+
 fn find_resource(
     prefix: [u8; 4],
     res_type: [char; 4],
@@ -401,13 +424,17 @@ const ROM_PATCHES: [Patch; 18] = [
         before: &[0x44],
         after: &[0xfc],
     },
-    // TODO: Bunch at 436bc6.
-    // TODO: 43d038 - ditto.
     Patch {
         addr: 0x3dd30 + 3,
         before: &[0x43],
         after: &[0xfb],
     },
+];
+
+const ROM_ARRAY_PATCHES: [ArrayPatch; 3] = [
+    ArrayPatch { start_addr: 0x019ec + 1, end_addr: 0x01ae4 + 1, step: 4, before: &[0x40], after: &[0xf8] },
+    ArrayPatch { start_addr: 0x36bc6 + 3, end_addr: 0x36c0e + 3, step: 6, before: &[0x43], after: &[0xfb] },
+    ArrayPatch { start_addr: 0x3d038 + 3, end_addr: 0x3d08c + 3, step: 6, before: &[0x43], after: &[0xfb] },
 ];
 
 fn patch_rom() -> anyhow::Result<()> {
@@ -418,21 +445,11 @@ fn patch_rom() -> anyhow::Result<()> {
         patch.apply(&mut data);
     }
 
-    // Sequence of consecutive addresses to patch...
-    print!("Patching consecutive addresses at 0x019ec: ");
-    for addr in 0x019ec..0x01ae8 {
-        if addr % 4 == 1 {
-            Patch {
-                addr,
-                before: &[0x40],
-                after: &[0xf8],
-            }
-            .apply(&mut data);
-        }
-        print!(".");
+    for (idx, patch) in ROM_ARRAY_PATCHES.iter().enumerate() {
+	println!("Applying array patch #{}: {:?}", idx, patch);
+	patch.apply(&mut data);
     }
-    println!(" done!");
-
+    
     fs::write("../../ROM.patched", data)?;
 
     Ok(())
