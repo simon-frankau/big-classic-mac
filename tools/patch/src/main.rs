@@ -28,12 +28,10 @@ enum Commands {
     /// Patch a ROM
     Rom,
     // Patch an individual resource.
-    Boot1,
-    Ptch34,
-    Ptch630,
-    Ptch117,
-    Cach1,
-    Ptch3,
+    Resource {
+        res_type: String,
+        res_id: u32,
+    },
     // Patch a disk containing resources.
     Disk601,
 }
@@ -299,15 +297,15 @@ struct ResourcePatch {
 }
 
 impl ResourcePatch {
-    fn patch(&self) -> anyhow::Result<()> {
+    fn patch_file(&self) -> anyhow::Result<()> {
         let name = format!("../../system/6.0.1/{}_{}", self.res_type, self.res_id);
         let mut data = fs::read(&name)?;
-        self.patch_aux(&mut data);
+        self.patch_data(&mut data);
         fs::write(format!("{}.patched", &name), data)?;
         Ok(())
     }
 
-    fn patch_aux(&self, data: &mut [u8]) {
+    fn patch_data(&self, data: &mut [u8]) {
         let patches = build_op_patches(&OP_PREFIXES, &ADDR_SUFFIXES);
 
         if let Some(patches) = self.patches {
@@ -359,6 +357,17 @@ const RESOURCE_PATCHES: [ResourcePatch; 6] = [
     },
 ];
 
+fn patch_resource(res_type: &str, res_id: u32) -> anyhow::Result<()> {
+    for res in RESOURCE_PATCHES.iter() {
+        if res.res_type == res_type && res.res_id == res_id {
+            res.patch_file()?;
+            return Ok(());
+        }
+    }
+
+    bail!("Couldn't find resource {} {}", res_type, res_id);
+}
+
 ////////////////////////////////////////////////////////////////////////
 // Disk patching.
 //
@@ -368,9 +377,9 @@ fn patch_disk_601() -> anyhow::Result<()> {
     let mut data = fs::read("../../system/6.0.1/tools.dsk")?;
 
     let ptch_34_idx = find_resource([0x60, 0x00, 0x06, 0xe6], ['p', 't', 'c', 'h'], 34, &data)?;
-    RESOURCE_PATCHES[1].patch_aux(&mut data[ptch_34_idx..]);
+    RESOURCE_PATCHES[1].patch_data(&mut data[ptch_34_idx..]);
     let ptch_630_idx = find_resource([0x60, 0x00, 0x03c, 0xce], ['P', 'T', 'C', 'H'], 630, &data)?;
-    RESOURCE_PATCHES[3].patch_aux(&mut data[ptch_630_idx..]);
+    RESOURCE_PATCHES[3].patch_data(&mut data[ptch_630_idx..]);
 
     fs::write("../../system/6.0.1/tools.dsk.patched", data)?;
     Ok(())
@@ -528,12 +537,7 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Rom => patch_rom()?,
-        Commands::Boot1 => RESOURCE_PATCHES[0].patch()?,
-        Commands::Ptch34 => RESOURCE_PATCHES[1].patch()?,
-        Commands::Ptch630 => RESOURCE_PATCHES[2].patch()?,
-        Commands::Ptch117 => RESOURCE_PATCHES[3].patch()?,
-        Commands::Cach1 => RESOURCE_PATCHES[4].patch()?,
-        Commands::Ptch3 => RESOURCE_PATCHES[5].patch()?,
+        Commands::Resource { res_type, res_id } => patch_resource(&res_type, res_id)?,
         Commands::Disk601 => patch_disk_601()?,
     }
 
