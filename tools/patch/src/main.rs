@@ -30,7 +30,7 @@ enum Commands {
     // Patch an individual resource.
     Resource {
         res_type: String,
-        res_id: u32,
+        res_id: i16,
     },
     // Patch a disk containing resources.
     Disk601,
@@ -109,21 +109,20 @@ impl<'a> ArrayPatch<'a> {
     }
 }
 
-fn find_resource(
-    prefix: [u8; 4],
-    res_type: [char; 4],
-    res_id: i16,
-    data: &[u8],
-) -> anyhow::Result<usize> {
+fn find_resource(prefix: &[u8], res_type: &str, res_id: i16, data: &[u8]) -> anyhow::Result<usize> {
+    assert_eq!(prefix.len(), 4);
+    assert_eq!(res_type.len(), 4);
+
+    let res_type_bytes = res_type.as_bytes();
     let needle = [
         prefix[0],
         prefix[1],
         prefix[2],
         prefix[3],
-        res_type[0] as u8,
-        res_type[1] as u8,
-        res_type[2] as u8,
-        res_type[3] as u8,
+        res_type_bytes[0],
+        res_type_bytes[1],
+        res_type_bytes[2],
+        res_type_bytes[3],
         (res_id >> 8) as u8,
         (res_id & 0xff) as u8,
     ];
@@ -135,15 +134,11 @@ fn find_resource(
     }
 
     match possibilities.len() {
-        0 => bail!(
-            "No match for resource {} {}",
-            String::from_iter(res_type),
-            res_id
-        ),
+        0 => bail!("No match for resource {} {}", res_type, res_id),
         1 => Ok(possibilities[0]),
         _ => bail!(
             "Multiple matches for resource {} {}: {:?}",
-            String::from_iter(res_type),
+            res_type,
             res_id,
             possibilities
         ),
@@ -291,9 +286,11 @@ const PTCH_3_PATCHES: [Patch; 2] = [
 
 struct ResourcePatch {
     res_type: &'static str,
-    res_id: u32,
+    res_id: i16,
     // If none, apply immediate operand patches.
     patches: Option<&'static [Patch<'static>]>,
+    // Used for finding the ROM on-disk.
+    prefix: &'static [u8],
 }
 
 impl ResourcePatch {
@@ -329,35 +326,41 @@ const RESOURCE_PATCHES: [ResourcePatch; 6] = [
         res_type: "boot",
         res_id: 1,
         patches: Some(&BOOT_1_PATCHES),
+        prefix: &[], // TODO
     },
     ResourcePatch {
         res_type: "ptch",
         res_id: 34,
         patches: Some(&PTCH_34_PATCHES),
+        prefix: &[0x60, 0x00, 0x06, 0xe6],
     },
     ResourcePatch {
         res_type: "PTCH",
         res_id: 630,
         patches: None,
+        prefix: &[0x60, 0x00, 0x03c, 0xce],
     },
     ResourcePatch {
         res_type: "PTCH",
         res_id: 117,
         patches: None,
+        prefix: &[], // TODO
     },
     ResourcePatch {
         res_type: "CACH",
         res_id: 1,
         patches: Some(&CACH_1_PATCHES),
+        prefix: &[], // TODO
     },
     ResourcePatch {
         res_type: "ptch",
         res_id: 3,
         patches: Some(&PTCH_3_PATCHES),
+        prefix: &[], // TODO
     },
 ];
 
-fn patch_resource(res_type: &str, res_id: u32) -> anyhow::Result<()> {
+fn patch_resource(res_type: &str, res_id: i16) -> anyhow::Result<()> {
     for res in RESOURCE_PATCHES.iter() {
         if res.res_type == res_type && res.res_id == res_id {
             res.patch_file()?;
@@ -376,10 +379,12 @@ fn patch_resource(res_type: &str, res_id: u32) -> anyhow::Result<()> {
 fn patch_disk_601() -> anyhow::Result<()> {
     let mut data = fs::read("../../system/6.0.1/tools.dsk")?;
 
-    let ptch_34_idx = find_resource([0x60, 0x00, 0x06, 0xe6], ['p', 't', 'c', 'h'], 34, &data)?;
-    RESOURCE_PATCHES[1].patch_data(&mut data[ptch_34_idx..]);
-    let ptch_630_idx = find_resource([0x60, 0x00, 0x03c, 0xce], ['P', 'T', 'C', 'H'], 630, &data)?;
-    RESOURCE_PATCHES[3].patch_data(&mut data[ptch_630_idx..]);
+    for patch in RESOURCE_PATCHES.iter() {
+        if !patch.prefix.is_empty() {
+            let idx = find_resource(patch.prefix, patch.res_type, patch.res_id, &data)?;
+            patch.patch_data(&mut data[idx..]);
+        }
+    }
 
     fs::write("../../system/6.0.1/tools.dsk.patched", data)?;
     Ok(())
