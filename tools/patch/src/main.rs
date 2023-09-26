@@ -31,6 +31,7 @@ enum Commands {
     Boot1,
     Ptch34,
     Ptch630,
+    Ptch117,
     Cach1,
     Ptch3,
     // Patch a disk containing resources.
@@ -155,7 +156,7 @@ fn find_resource(
 // Generic immediate instruction patching.
 //
 
-const OP_PREFIXES: [&[u8]; 23] = [
+const OP_PREFIXES: [&[u8]; 24] = [
     &[0x04, 0x82], // SUB
     &[0x0c, 0x80], // CMP
     &[0x0c, 0x81], // CMP
@@ -177,6 +178,7 @@ const OP_PREFIXES: [&[u8]; 23] = [
     &[0x2f, 0x7c], // MOVE
     &[0x41, 0xf9], // LEA
     &[0x48, 0x79], // PEA
+    &[0x49, 0xf9], // LEA
     &[0x4e, 0xb9], // JSR
     &[0x4e, 0xf9], // JMP
 ];
@@ -306,6 +308,24 @@ fn patch_ptch_630_aux(data: &mut [u8]) {
         patch.apply(data);
     }
 }
+
+fn patch_ptch_117() -> anyhow::Result<()> {
+    let mut data = fs::read("../../system/6.0.1/PTCH_117")?;
+    patch_ptch_117_aux(&mut data);
+    fs::write("../../system/6.0.1/PTCH_117.patched", data)?;
+    Ok(())
+}
+
+fn patch_ptch_117_aux(data: &mut [u8]) {
+    let patches = build_op_patches(&OP_PREFIXES, &ADDR_SUFFIXES);
+
+    for (idx, patch) in patches.iter().enumerate() {
+        println!("Applying patch #{}: {:?}", idx, patch.to_pattern_patch());
+        patch.apply(data);
+    }
+}
+
+
 
 const CACH_1_PATCHES: [Patch; 2] = [
     Patch {
@@ -533,6 +553,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Boot1 => patch_boot_1()?,
         Commands::Ptch34 => patch_ptch_34()?,
         Commands::Ptch630 => patch_ptch_630()?,
+        Commands::Ptch117 => patch_ptch_117()?,
         Commands::Cach1 => patch_cach_1()?,
         Commands::Ptch3 => patch_ptch_3()?,
         Commands::Disk601 => patch_disk_601()?,
