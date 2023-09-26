@@ -10,9 +10,13 @@ the ROM, and tools to patch the ROM/resources.
 
 The `patch` tool will patch the SE FDHD ROM and System 6.0.1 resources
 such that it'll boot to Finder under a hacked-up copy of Basilisk II
-(TODO: Tidy up and publish those hacks.)
+(I've put a branch up at
+https://github.com/simon-frankau/macemu/tree/rom_move that builds on
+an M1 Mac. This stuff is not terribly portable, so good luck making it
+work on your OS.)
 
-The ROM is moved from 0x400000 to 0xf80000.
+The ROM is moved from 0x400000 to 0xf80000, and max RAM has been
+increased to 5MB rather than 4MB for any other classic Mac.
 
 The references to debug tooling, around 0xf80000, were moved to
 0xfc0000, to make room for the ROM.
