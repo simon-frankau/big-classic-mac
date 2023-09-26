@@ -113,7 +113,14 @@ fn find_resource(prefix: &[u8], res_type: &str, res_id: i16, data: &[u8]) -> any
     assert_eq!(prefix.len(), 4);
     assert_eq!(res_type.len(), 4);
 
-    let res_type_bytes = res_type.as_bytes();
+    let mut res_type_bytes = res_type.as_bytes();
+    let mut res_id = res_id;
+    if res_type == "boot" {
+        // Ugh, special case. Horrible hack.
+        res_type_bytes = &[0x00, 0x86, 0x00, 0x17];
+        res_id = 0;
+    }
+
     let needle = [
         prefix[0],
         prefix[1],
@@ -289,6 +296,7 @@ struct ResourcePatch {
     res_id: i16,
     // If none, apply immediate operand patches.
     patches: Option<&'static [Patch<'static>]>,
+    length: usize,
     // Used for finding the ROM on-disk.
     prefix: &'static [u8],
 }
@@ -326,37 +334,43 @@ const RESOURCE_PATCHES: [ResourcePatch; 6] = [
         res_type: "boot",
         res_id: 1,
         patches: Some(&BOOT_1_PATCHES),
-        prefix: &[], // TODO
+        length: 0x404,
+        prefix: &[0x4c, 0x4b, 0x60, 0x00],
     },
     ResourcePatch {
         res_type: "ptch",
         res_id: 34,
         patches: Some(&PTCH_34_PATCHES),
+        length: 0x772,
         prefix: &[0x60, 0x00, 0x06, 0xe6],
-    },
-    ResourcePatch {
-        res_type: "PTCH",
-        res_id: 630,
-        patches: None,
-        prefix: &[0x60, 0x00, 0x03c, 0xce],
     },
     ResourcePatch {
         res_type: "PTCH",
         res_id: 117,
         patches: None,
-        prefix: &[], // TODO
+        length: 0x4a48,
+        prefix: &[0x60, 0x00, 0x44, 0xA2],
+    },
+    ResourcePatch {
+        res_type: "PTCH",
+        res_id: 630,
+        patches: None,
+        length: 0x41e0,
+        prefix: &[0x60, 0x00, 0x03c, 0xce],
     },
     ResourcePatch {
         res_type: "CACH",
         res_id: 1,
         patches: Some(&CACH_1_PATCHES),
-        prefix: &[], // TODO
+        length: 0xb86,
+        prefix: &[0x60, 0x00, 0x07, 0xA4],
     },
     ResourcePatch {
         res_type: "ptch",
         res_id: 3,
         patches: Some(&PTCH_3_PATCHES),
-        prefix: &[], // TODO
+        length: 0x1ab8,
+        prefix: &[0x60, 0x00, 0x1A, 0xA4],
     },
 ];
 
@@ -375,15 +389,28 @@ fn patch_resource(res_type: &str, res_id: i16) -> anyhow::Result<()> {
 // Disk patching.
 //
 
-// TODO: Patch the other resources, too.
 fn patch_disk_601() -> anyhow::Result<()> {
     let mut data = fs::read("../../system/6.0.1/tools.dsk")?;
 
+    // The "boot" resource contents also occurs at the start of the
+    // disk (I guess it makes sense for boot resources to be placed in
+    // the boot block!), so we skip that to avoid multiple matches.
+    let patchable_data = &mut data[0x100..];
+
     for patch in RESOURCE_PATCHES.iter() {
-        if !patch.prefix.is_empty() {
-            let idx = find_resource(patch.prefix, patch.res_type, patch.res_id, &data)?;
-            patch.patch_data(&mut data[idx..]);
-        }
+        println!("Patching {} {}", patch.res_type, patch.res_id);
+        let idx = find_resource(patch.prefix, patch.res_type, patch.res_id, &patchable_data)?;
+        patch.patch_data(&mut patchable_data[idx..][..patch.length]);
+    }
+
+    // And let's patch the boot sector while we're at it.
+    {
+	let boot_data = &mut data[..0x10000];
+	let boot_patch = &RESOURCE_PATCHES[0];
+	assert_eq!(boot_patch.res_type, "boot");
+	assert_eq!(boot_patch.res_id, 1);
+        let idx = find_resource(boot_patch.prefix, boot_patch.res_type, boot_patch.res_id, &boot_data)?;
+        boot_patch.patch_data(&mut boot_data[idx..][..boot_patch.length]);
     }
 
     fs::write("../../system/6.0.1/tools.dsk.patched", data)?;
