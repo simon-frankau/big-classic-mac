@@ -197,7 +197,7 @@ struct OwnedPatternPatch {
 }
 
 impl OwnedPatternPatch {
-    fn to_pattern_patch<'a>(&'a self) -> PatternPatch<'a> {
+    fn to_pattern_patch(&self) -> PatternPatch {
         PatternPatch {
             pattern: &self.pattern,
             replacement: &self.replacement,
@@ -293,40 +293,6 @@ fn patch_ptch_34_aux(data: &mut [u8]) {
     }
 }
 
-fn patch_ptch_630() -> anyhow::Result<()> {
-    let mut data = fs::read("../../system/6.0.1/PTCH_630")?;
-    patch_ptch_630_aux(&mut data);
-    fs::write("../../system/6.0.1/PTCH_630.patched", data)?;
-    Ok(())
-}
-
-fn patch_ptch_630_aux(data: &mut [u8]) {
-    let patches = build_op_patches(&OP_PREFIXES, &ADDR_SUFFIXES);
-
-    for (idx, patch) in patches.iter().enumerate() {
-        println!("Applying patch #{}: {:?}", idx, patch.to_pattern_patch());
-        patch.apply(data);
-    }
-}
-
-fn patch_ptch_117() -> anyhow::Result<()> {
-    let mut data = fs::read("../../system/6.0.1/PTCH_117")?;
-    patch_ptch_117_aux(&mut data);
-    fs::write("../../system/6.0.1/PTCH_117.patched", data)?;
-    Ok(())
-}
-
-fn patch_ptch_117_aux(data: &mut [u8]) {
-    let patches = build_op_patches(&OP_PREFIXES, &ADDR_SUFFIXES);
-
-    for (idx, patch) in patches.iter().enumerate() {
-        println!("Applying patch #{}: {:?}", idx, patch.to_pattern_patch());
-        patch.apply(data);
-    }
-}
-
-
-
 const CACH_1_PATCHES: [Patch; 2] = [
     Patch {
         addr: 0x58,
@@ -392,7 +358,7 @@ fn patch_disk_601() -> anyhow::Result<()> {
     let ptch_34_idx = find_resource([0x60, 0x00, 0x06, 0xe6], ['p', 't', 'c', 'h'], 34, &data)?;
     patch_ptch_34_aux(&mut data[ptch_34_idx..]);
     let ptch_630_idx = find_resource([0x60, 0x00, 0x03c, 0xce], ['P', 'T', 'C', 'H'], 630, &data)?;
-    patch_ptch_630_aux(&mut data[ptch_630_idx..]);
+    RESOURCE_PATCHES[1].patch_aux(&mut data[ptch_630_idx..]);
 
     fs::write("../../system/6.0.1/tools.dsk.patched", data)?;
     Ok(())
@@ -542,6 +508,45 @@ fn patch_rom() -> anyhow::Result<()> {
 }
 
 ////////////////////////////////////////////////////////////////////////
+// Data-driven resource patching!
+//
+
+struct ResourcePatch {
+    res_type: &'static str,
+    res_id: u32,
+}
+
+impl ResourcePatch {
+    fn patch(&self) -> anyhow::Result<()> {
+        let name = format!("../../system/6.0.1/{}_{}", self.res_type, self.res_id);
+        let mut data = fs::read(&name)?;
+        self.patch_aux(&mut data);
+        fs::write(format!("{}.patched", &name), data)?;
+        Ok(())
+    }
+
+    fn patch_aux(&self, data: &mut [u8]) {
+        let patches = build_op_patches(&OP_PREFIXES, &ADDR_SUFFIXES);
+
+        for (idx, patch) in patches.iter().enumerate() {
+            println!("Applying patch #{}: {:?}", idx, patch.to_pattern_patch());
+            patch.apply(data);
+        }
+    }
+}
+
+const RESOURCE_PATCHES: [ResourcePatch; 2] = [
+    ResourcePatch {
+        res_type: "PTCH",
+        res_id: 630,
+    },
+    ResourcePatch {
+        res_type: "PTCH",
+        res_id: 117,
+    },
+];
+
+////////////////////////////////////////////////////////////////////////
 // Main entry point.
 //
 
@@ -552,8 +557,8 @@ fn main() -> anyhow::Result<()> {
         Commands::Rom => patch_rom()?,
         Commands::Boot1 => patch_boot_1()?,
         Commands::Ptch34 => patch_ptch_34()?,
-        Commands::Ptch630 => patch_ptch_630()?,
-        Commands::Ptch117 => patch_ptch_117()?,
+        Commands::Ptch630 => RESOURCE_PATCHES[0].patch()?,
+        Commands::Ptch117 => RESOURCE_PATCHES[1].patch()?,
         Commands::Cach1 => patch_cach_1()?,
         Commands::Ptch3 => patch_ptch_3()?,
         Commands::Disk601 => patch_disk_601()?,

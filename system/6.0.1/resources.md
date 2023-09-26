@@ -302,7 +302,8 @@ structure.
 The following resources need to be patched:
 
  * boot 1
+ * ptch 34 aka 0x22
  * PTCH 117 aka 0x75
  * PTCH 630 aka 0x276
  * CACH 1
- * ptch 1
+ * ptch 3
