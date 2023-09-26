@@ -151,6 +151,73 @@ fn find_resource(
     }
 }
 
+////////////////////////////////////////////////////////////////////////
+// Generic immediate instruction patching.
+//
+
+const OP_PREFIXES: [&[u8]; 11] = [
+    &[0x0c, 0x80], // CMP 1
+    &[0x0c, 0x81], // CMP 2
+    &[0x0c, 0x96], // CMP 3
+    &[0x0c, 0x97], // CMP 4
+    &[0x0c, 0xaf], // CMP 5
+    &[0x20, 0x7c], // MOV
+    &[0x2f, 0x3c], // MOV
+    &[0x41, 0xf9], // LEA
+    &[0x48, 0x79], // PEA
+    &[0x4e, 0xb9], // JSR
+    &[0x4e, 0xf9], // JMP
+];
+
+const ADDR_SUFFIXES: [(&[u8], &[u8]); 4] = [
+    (&[0x00, 0x40], &[0x00, 0xf8]),
+    (&[0x00, 0x41], &[0x00, 0xf9]),
+    (&[0x00, 0x42], &[0x00, 0xfa]),
+    (&[0x00, 0x43], &[0x00, 0xfb]),
+];
+
+// Tedious experiments in working around Rust's lifetime stuff.
+struct OwnedPatternPatch {
+    pattern: Vec<u8>,
+    replacement: Vec<u8>,
+}
+
+impl OwnedPatternPatch {
+    fn to_pattern_patch<'a>(&'a self) -> PatternPatch<'a> {
+        PatternPatch {
+            pattern: &self.pattern,
+            replacement: &self.replacement,
+        }
+    }
+
+    fn apply(&self, data: &mut [u8]) {
+        self.to_pattern_patch().apply(data);
+    }
+}
+
+// Build a set of patches that represent immediate ops on absolute ROM
+// addresses.
+fn build_op_patches(prefixes: &[&[u8]], suffixes: &[(&[u8], &[u8])]) -> Vec<OwnedPatternPatch> {
+    let mut patterns = Vec::new();
+
+    for prefix in prefixes.iter() {
+        for (suffix_l, suffix_r) in suffixes.iter() {
+            let mut pattern = Vec::from(*prefix);
+            pattern.extend_from_slice(suffix_l);
+
+            let mut replacement = Vec::from(*prefix);
+            replacement.extend_from_slice(suffix_r);
+
+            patterns.push(OwnedPatternPatch {
+                pattern,
+                replacement,
+            });
+        }
+    }
+
+    patterns
+}
+
 ///////////////////////////////////////////////////////////////////////
 // Resource patching.
 //
@@ -212,196 +279,6 @@ fn patch_ptch_34_aux(data: &mut [u8]) {
     }
 }
 
-const PTCH_630_PATCHES: [PatternPatch; 44] = [
-    // JMP
-    PatternPatch {
-        pattern: &[0x4e, 0xf9, 0x00, 0x40],
-        replacement: &[0x4e, 0xf9, 0x00, 0xf8],
-    },
-    PatternPatch {
-        pattern: &[0x4e, 0xf9, 0x00, 0x41],
-        replacement: &[0x4e, 0xf9, 0x00, 0xf9],
-    },
-    PatternPatch {
-        pattern: &[0x4e, 0xf9, 0x00, 0x42],
-        replacement: &[0x4e, 0xf9, 0x00, 0xfa],
-    },
-    PatternPatch {
-        pattern: &[0x4e, 0xf9, 0x00, 0x43],
-        replacement: &[0x4e, 0xf9, 0x00, 0xfb],
-    },
-    // JSR
-    PatternPatch {
-        pattern: &[0x4e, 0xb9, 0x00, 0x40],
-        replacement: &[0x4e, 0xb9, 0x00, 0xf8],
-    },
-    PatternPatch {
-        pattern: &[0x4e, 0xb9, 0x00, 0x41],
-        replacement: &[0x4e, 0xb9, 0x00, 0xf9],
-    },
-    PatternPatch {
-        pattern: &[0x4e, 0xb9, 0x00, 0x42],
-        replacement: &[0x4e, 0xb9, 0x00, 0xfa],
-    },
-    PatternPatch {
-        pattern: &[0x4e, 0xb9, 0x00, 0x43],
-        replacement: &[0x4e, 0xb9, 0x00, 0xfb],
-    },
-    // LEA
-    PatternPatch {
-        pattern: &[0x41, 0xf9, 0x00, 0x40],
-        replacement: &[0x41, 0xf9, 0x00, 0xf8],
-    },
-    PatternPatch {
-        pattern: &[0x41, 0xf9, 0x00, 0x41],
-        replacement: &[0x41, 0xf9, 0x00, 0xf9],
-    },
-    PatternPatch {
-        pattern: &[0x41, 0xf9, 0x00, 0x42],
-        replacement: &[0x41, 0xf9, 0x00, 0xfa],
-    },
-    PatternPatch {
-        pattern: &[0x41, 0xf9, 0x00, 0x43],
-        replacement: &[0x41, 0xf9, 0x00, 0xfb],
-    },
-    // CMP.I variant 1
-    PatternPatch {
-        pattern: &[0x0c, 0x97, 0x00, 0x40],
-        replacement: &[0x0c, 0x97, 0x00, 0xf8],
-    },
-    PatternPatch {
-        pattern: &[0x0c, 0x97, 0x00, 0x41],
-        replacement: &[0x0c, 0x97, 0x00, 0xf9],
-    },
-    PatternPatch {
-        pattern: &[0x0c, 0x97, 0x00, 0x42],
-        replacement: &[0x0c, 0x97, 0x00, 0xfa],
-    },
-    PatternPatch {
-        pattern: &[0x0c, 0x97, 0x00, 0x43],
-        replacement: &[0x0c, 0x97, 0x00, 0xfb],
-    },
-    // CMP.I variant 2
-    PatternPatch {
-        pattern: &[0x0c, 0x96, 0x00, 0x40],
-        replacement: &[0x0c, 0x96, 0x00, 0xf8],
-    },
-    PatternPatch {
-        pattern: &[0x0c, 0x96, 0x00, 0x41],
-        replacement: &[0x0c, 0x96, 0x00, 0xf9],
-    },
-    PatternPatch {
-        pattern: &[0x0c, 0x96, 0x00, 0x42],
-        replacement: &[0x0c, 0x96, 0x00, 0xfa],
-    },
-    PatternPatch {
-        pattern: &[0x0c, 0x96, 0x00, 0x43],
-        replacement: &[0x0c, 0x96, 0x00, 0xfb],
-    },
-    // CMP.I variant 3
-    PatternPatch {
-        pattern: &[0x0c, 0xaf, 0x00, 0x40],
-        replacement: &[0x0c, 0xaf, 0x00, 0xf8],
-    },
-    PatternPatch {
-        pattern: &[0x0c, 0xaf, 0x00, 0x41],
-        replacement: &[0x0c, 0xaf, 0x00, 0xf9],
-    },
-    PatternPatch {
-        pattern: &[0x0c, 0xaf, 0x00, 0x42],
-        replacement: &[0x0c, 0xaf, 0x00, 0xfa],
-    },
-    PatternPatch {
-        pattern: &[0x0c, 0xaf, 0x00, 0x43],
-        replacement: &[0x0c, 0xaf, 0x00, 0xfb],
-    },
-    // CMP.I variant 4
-    PatternPatch {
-        pattern: &[0x0c, 0x81, 0x00, 0x40],
-        replacement: &[0x0c, 0x81, 0x00, 0xf8],
-    },
-    PatternPatch {
-        pattern: &[0x0c, 0x81, 0x00, 0x41],
-        replacement: &[0x0c, 0x81, 0x00, 0xf9],
-    },
-    PatternPatch {
-        pattern: &[0x0c, 0x81, 0x00, 0x42],
-        replacement: &[0x0c, 0x81, 0x00, 0xfa],
-    },
-    PatternPatch {
-        pattern: &[0x0c, 0x81, 0x00, 0x43],
-        replacement: &[0x0c, 0x81, 0x00, 0xfb],
-    },
-    // CMP.I variant 5
-    PatternPatch {
-        pattern: &[0x0c, 0x80, 0x00, 0x40],
-        replacement: &[0x0c, 0x80, 0x00, 0xf8],
-    },
-    PatternPatch {
-        pattern: &[0x0c, 0x80, 0x00, 0x41],
-        replacement: &[0x0c, 0x80, 0x00, 0xf9],
-    },
-    PatternPatch {
-        pattern: &[0x0c, 0x80, 0x00, 0x42],
-        replacement: &[0x0c, 0x80, 0x00, 0xfa],
-    },
-    PatternPatch {
-        pattern: &[0x0c, 0x80, 0x00, 0x43],
-        replacement: &[0x0c, 0x80, 0x00, 0xfb],
-    },
-    // PEA
-    PatternPatch {
-        pattern: &[0x48, 0x79, 0x00, 0x40],
-        replacement: &[0x48, 0x79, 0x00, 0xf8],
-    },
-    PatternPatch {
-        pattern: &[0x48, 0x79, 0x00, 0x41],
-        replacement: &[0x48, 0x79, 0x00, 0xf9],
-    },
-    PatternPatch {
-        pattern: &[0x48, 0x79, 0x00, 0x42],
-        replacement: &[0x48, 0x79, 0x00, 0xfa],
-    },
-    PatternPatch {
-        pattern: &[0x48, 0x79, 0x00, 0x43],
-        replacement: &[0x48, 0x79, 0x00, 0xfb],
-    },
-    // MOV.L, variant #1
-    PatternPatch {
-        pattern: &[0x2f, 0x3c, 0x00, 0x40],
-        replacement: &[0x2f, 0x3c, 0x00, 0xf8],
-    },
-    PatternPatch {
-        pattern: &[0x2f, 0x3c, 0x00, 0x41],
-        replacement: &[0x2f, 0x3c, 0x00, 0xf9],
-    },
-    PatternPatch {
-        pattern: &[0x2f, 0x3c, 0x00, 0x42],
-        replacement: &[0x2f, 0x3c, 0x00, 0xfa],
-    },
-    PatternPatch {
-        pattern: &[0x2f, 0x3c, 0x00, 0x43],
-        replacement: &[0x2f, 0x3c, 0x00, 0xfb],
-    },
-    // MOV.L, variant #2
-    PatternPatch {
-        pattern: &[0x20, 0x7c, 0x00, 0x40],
-        replacement: &[0x20, 0x7c, 0x00, 0xf8],
-    },
-    PatternPatch {
-        pattern: &[0x20, 0x7c, 0x00, 0x41],
-        replacement: &[0x20, 0x7c, 0x00, 0xf9],
-    },
-    PatternPatch {
-        pattern: &[0x20, 0x7c, 0x00, 0x42],
-        replacement: &[0x20, 0x7c, 0x00, 0xfa],
-    },
-    PatternPatch {
-        pattern: &[0x20, 0x7c, 0x00, 0x43],
-        replacement: &[0x20, 0x7c, 0x00, 0xfb],
-    },
-];
-
 fn patch_ptch_630() -> anyhow::Result<()> {
     let mut data = fs::read("../../system/6.0.1/PTCH_630")?;
     patch_ptch_630_aux(&mut data);
@@ -410,8 +287,10 @@ fn patch_ptch_630() -> anyhow::Result<()> {
 }
 
 fn patch_ptch_630_aux(data: &mut [u8]) {
-    for (idx, patch) in PTCH_630_PATCHES.iter().enumerate() {
-        println!("Applying patch #{}: {:?}", idx, patch);
+    let patches = build_op_patches(&OP_PREFIXES, &ADDR_SUFFIXES);
+
+    for (idx, patch) in patches.iter().enumerate() {
+        println!("Applying patch #{}: {:?}", idx, patch.to_pattern_patch());
         patch.apply(data);
     }
 }
@@ -486,8 +365,6 @@ fn patch_disk_601() -> anyhow::Result<()> {
     fs::write("../../system/6.0.1/tools.dsk.patched", data)?;
     Ok(())
 }
-
-
 
 ///////////////////////////////////////////////////////////////////////
 // ROM patching.
