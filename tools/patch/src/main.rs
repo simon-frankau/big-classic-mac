@@ -242,20 +242,6 @@ const BOOT_1_PATCHES: [Patch; 1] = [Patch {
     after: &[0x00, 0xf8],
 }];
 
-fn patch_boot_1() -> anyhow::Result<()> {
-    let mut data = fs::read("../../system/6.0.1/boot_1")?;
-    patch_boot_1_aux(&mut data);
-    fs::write("../../system/6.0.1/boot_1.patched", data)?;
-    Ok(())
-}
-
-fn patch_boot_1_aux(data: &mut [u8]) {
-    for (idx, patch) in BOOT_1_PATCHES.iter().enumerate() {
-        println!("Applying patch #{}: {:?}", idx, patch);
-        patch.apply(data);
-    }
-}
-
 const PTCH_34_PATCHES: [Patch; 4] = [
     Patch {
         addr: 0x074e,
@@ -279,20 +265,6 @@ const PTCH_34_PATCHES: [Patch; 4] = [
     },
 ];
 
-fn patch_ptch_34() -> anyhow::Result<()> {
-    let mut data = fs::read("../../system/6.0.1/ptch_34")?;
-    patch_ptch_34_aux(&mut data);
-    fs::write("../../system/6.0.1/ptch_34.patched", data)?;
-    Ok(())
-}
-
-fn patch_ptch_34_aux(data: &mut [u8]) {
-    for (idx, patch) in PTCH_34_PATCHES.iter().enumerate() {
-        println!("Applying patch #{}: {:?}", idx, patch);
-        patch.apply(data);
-    }
-}
-
 const CACH_1_PATCHES: [Patch; 2] = [
     Patch {
         addr: 0x58,
@@ -305,20 +277,6 @@ const CACH_1_PATCHES: [Patch; 2] = [
         after: &[0x00, 0xf8],
     },
 ];
-
-fn patch_cach_1() -> anyhow::Result<()> {
-    let mut data = fs::read("../../system/6.0.1/CACH_1")?;
-    patch_cach_1_aux(&mut data);
-    fs::write("../../system/6.0.1/CACH_1.patched", data)?;
-    Ok(())
-}
-
-fn patch_cach_1_aux(data: &mut [u8]) {
-    for (idx, patch) in CACH_1_PATCHES.iter().enumerate() {
-        println!("Applying patch #{}: {:?}", idx, patch);
-        patch.apply(data);
-    }
-}
 
 const PTCH_3_PATCHES: [Patch; 2] = [
     Patch {
@@ -333,19 +291,73 @@ const PTCH_3_PATCHES: [Patch; 2] = [
     },
 ];
 
-fn patch_ptch_3() -> anyhow::Result<()> {
-    let mut data = fs::read("../../system/6.0.1/ptch_3")?;
-    patch_ptch_3_aux(&mut data);
-    fs::write("../../system/6.0.1/ptch_3.patched", data)?;
-    Ok(())
+struct ResourcePatch {
+    res_type: &'static str,
+    res_id: u32,
+    // If none, apply immediate operand patches.
+    patches: Option<&'static [Patch<'static>]>,
 }
 
-fn patch_ptch_3_aux(data: &mut [u8]) {
-    for (idx, patch) in PTCH_3_PATCHES.iter().enumerate() {
-        println!("Applying patch #{}: {:?}", idx, patch);
-        patch.apply(data);
+impl ResourcePatch {
+    fn patch(&self) -> anyhow::Result<()> {
+        let name = format!("../../system/6.0.1/{}_{}", self.res_type, self.res_id);
+        let mut data = fs::read(&name)?;
+        self.patch_aux(&mut data);
+        fs::write(format!("{}.patched", &name), data)?;
+        Ok(())
+    }
+
+    fn patch_aux(&self, data: &mut [u8]) {
+        let patches = build_op_patches(&OP_PREFIXES, &ADDR_SUFFIXES);
+
+        if let Some(patches) = self.patches {
+            // Specfic patches
+            for (idx, patch) in patches.iter().enumerate() {
+                println!("Applying patch #{}: {:?}", idx, patch);
+                patch.apply(data);
+            }
+        } else {
+            // Generic immediate operand patches.
+            for (idx, patch) in patches.iter().enumerate() {
+                println!("Applying patch #{}: {:?}", idx, patch.to_pattern_patch());
+                patch.apply(data);
+            }
+        }
     }
 }
+
+const RESOURCE_PATCHES: [ResourcePatch; 6] = [
+    ResourcePatch {
+        res_type: "boot",
+        res_id: 1,
+        patches: Some(&BOOT_1_PATCHES),
+    },
+    ResourcePatch {
+        res_type: "ptch",
+        res_id: 34,
+        patches: Some(&PTCH_34_PATCHES),
+    },
+    ResourcePatch {
+        res_type: "PTCH",
+        res_id: 630,
+        patches: None,
+    },
+    ResourcePatch {
+        res_type: "PTCH",
+        res_id: 117,
+        patches: None,
+    },
+    ResourcePatch {
+        res_type: "CACH",
+        res_id: 1,
+        patches: Some(&CACH_1_PATCHES),
+    },
+    ResourcePatch {
+        res_type: "ptch",
+        res_id: 3,
+        patches: Some(&PTCH_3_PATCHES),
+    },
+];
 
 ////////////////////////////////////////////////////////////////////////
 // Disk patching.
@@ -356,9 +368,9 @@ fn patch_disk_601() -> anyhow::Result<()> {
     let mut data = fs::read("../../system/6.0.1/tools.dsk")?;
 
     let ptch_34_idx = find_resource([0x60, 0x00, 0x06, 0xe6], ['p', 't', 'c', 'h'], 34, &data)?;
-    patch_ptch_34_aux(&mut data[ptch_34_idx..]);
+    RESOURCE_PATCHES[1].patch_aux(&mut data[ptch_34_idx..]);
     let ptch_630_idx = find_resource([0x60, 0x00, 0x03c, 0xce], ['P', 'T', 'C', 'H'], 630, &data)?;
-    RESOURCE_PATCHES[1].patch_aux(&mut data[ptch_630_idx..]);
+    RESOURCE_PATCHES[3].patch_aux(&mut data[ptch_630_idx..]);
 
     fs::write("../../system/6.0.1/tools.dsk.patched", data)?;
     Ok(())
@@ -508,45 +520,6 @@ fn patch_rom() -> anyhow::Result<()> {
 }
 
 ////////////////////////////////////////////////////////////////////////
-// Data-driven resource patching!
-//
-
-struct ResourcePatch {
-    res_type: &'static str,
-    res_id: u32,
-}
-
-impl ResourcePatch {
-    fn patch(&self) -> anyhow::Result<()> {
-        let name = format!("../../system/6.0.1/{}_{}", self.res_type, self.res_id);
-        let mut data = fs::read(&name)?;
-        self.patch_aux(&mut data);
-        fs::write(format!("{}.patched", &name), data)?;
-        Ok(())
-    }
-
-    fn patch_aux(&self, data: &mut [u8]) {
-        let patches = build_op_patches(&OP_PREFIXES, &ADDR_SUFFIXES);
-
-        for (idx, patch) in patches.iter().enumerate() {
-            println!("Applying patch #{}: {:?}", idx, patch.to_pattern_patch());
-            patch.apply(data);
-        }
-    }
-}
-
-const RESOURCE_PATCHES: [ResourcePatch; 2] = [
-    ResourcePatch {
-        res_type: "PTCH",
-        res_id: 630,
-    },
-    ResourcePatch {
-        res_type: "PTCH",
-        res_id: 117,
-    },
-];
-
-////////////////////////////////////////////////////////////////////////
 // Main entry point.
 //
 
@@ -555,12 +528,12 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Rom => patch_rom()?,
-        Commands::Boot1 => patch_boot_1()?,
-        Commands::Ptch34 => patch_ptch_34()?,
-        Commands::Ptch630 => RESOURCE_PATCHES[0].patch()?,
-        Commands::Ptch117 => RESOURCE_PATCHES[1].patch()?,
-        Commands::Cach1 => patch_cach_1()?,
-        Commands::Ptch3 => patch_ptch_3()?,
+        Commands::Boot1 => RESOURCE_PATCHES[0].patch()?,
+        Commands::Ptch34 => RESOURCE_PATCHES[1].patch()?,
+        Commands::Ptch630 => RESOURCE_PATCHES[2].patch()?,
+        Commands::Ptch117 => RESOURCE_PATCHES[3].patch()?,
+        Commands::Cach1 => RESOURCE_PATCHES[4].patch()?,
+        Commands::Ptch3 => RESOURCE_PATCHES[5].patch()?,
         Commands::Disk601 => patch_disk_601()?,
     }
 
