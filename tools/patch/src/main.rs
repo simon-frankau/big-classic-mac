@@ -421,7 +421,7 @@ fn patch_disk_601() -> anyhow::Result<()> {
 // ROM patching.
 //
 
-const ROM_PATCHES: [Patch; 19] = [
+const ROM_PATCHES: [Patch; 24] = [
     // Patch debug hooks from 0xf8XXXX to 0xfcXXXX, to avoid ROM
     // clash.
     Patch {
@@ -516,12 +516,38 @@ const ROM_PATCHES: [Patch; 19] = [
         before: &[0x43],
         after: &[0xfb],
     },
+    // Patch location of SCSI HW.
+    Patch {
+	addr: 0x004b4 + 3,
+	before: &[0x5f, 0xf0],
+	after: &[0xfc, 0x10],
+    },
+    Patch {
+	addr: 0x01c74 + 3,
+	before: &[0x5f, 0xf0],
+	after: &[0xfc, 0x10],
+    },
+    Patch {
+	addr: 0x004bc + 3,
+	before: &[0x5f, 0xf2],
+	after: &[0xfc, 0x12],
+    },
+    Patch {
+	addr: 0x004c4 + 3,
+	before: &[0x5f, 0xf2],
+	after: &[0xfc, 0x12],
+    },
+    Patch {
+	addr: 0x004ce + 3,
+	before: &[0x5f, 0xf0],
+	after: &[0xfc, 0x10],
+    },
     // Patch for maximum amount of memory that can be installed in the
     // machine.
     Patch {
-	addr: 0x267e,
+	addr: 0x0267e,
 	before: &[0x40],
-	after: &[0x50],
+	after: &[0x80],
     },
 ];
 
