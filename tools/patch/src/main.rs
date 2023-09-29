@@ -421,7 +421,7 @@ fn patch_disk_601() -> anyhow::Result<()> {
 // ROM patching.
 //
 
-const ROM_PATCHES: [Patch; 24] = [
+const ROM_PATCHES: [Patch; 27] = [
     // Patch debug hooks from 0xf8XXXX to 0xfcXXXX, to avoid ROM
     // clash.
     Patch {
@@ -542,12 +542,28 @@ const ROM_PATCHES: [Patch; 24] = [
 	before: &[0x5f, 0xf0],
 	after: &[0xfc, 0x10],
     },
+    // Patches to get around the 8MB limit on memory zones.
+    Patch {
+	addr: 0x0a4c0 + 3,
+	before: &[0x80],
+	after: &[0xfc],
+    },
+    Patch {
+	addr: 0x0a550 + 3,
+	before: &[0x80],
+	after: &[0xfc],
+    },
+    Patch {
+	addr: 0x0a9ae + 3,
+	before: &[0x80],
+	after: &[0xfc],
+    },
     // Patch for maximum amount of memory that can be installed in the
     // machine.
     Patch {
 	addr: 0x0267e,
 	before: &[0x40],
-	after: &[0x80],
+	after: &[0x90],
     },
 ];
 
