@@ -421,7 +421,7 @@ fn patch_disk_601() -> anyhow::Result<()> {
 // ROM patching.
 //
 
-const ROM_PATCHES: [Patch; 27] = [
+const ROM_PATCHES: [Patch; 45] = [
     // Patch debug hooks from 0xf8XXXX to 0xfcXXXX, to avoid ROM
     // clash.
     Patch {
@@ -542,6 +542,98 @@ const ROM_PATCHES: [Patch; 27] = [
 	before: &[0x5f, 0xf0],
 	after: &[0xfc, 0x10],
     },
+    // Patches for SCC read
+    Patch {
+	addr: 0x00478 + 3,
+	before: &[0x9f, 0xff],
+	after: &[0xfc, 0x2f],
+    },
+    Patch {
+	addr: 0x0056a + 3,
+	before: &[0x9f, 0xff],
+	after: &[0xfc, 0x2f],
+    },
+    Patch {
+	addr: 0x0059e + 3,
+	before: &[0x9f, 0xff],
+	after: &[0xfc, 0x2f],
+    },
+    Patch {
+	addr: 0x022f6 + 3,
+	before: &[0x9f, 0xff],
+	after: &[0xfc, 0x2f],
+    },
+    Patch {
+	addr: 0x02312 + 3,
+	before: &[0x9f, 0xff],
+	after: &[0xfc, 0x2f],
+    },
+    Patch {
+	addr: 0x02336 + 3,
+	before: &[0x9f, 0xff],
+	after: &[0xfc, 0x2f],
+    },
+    Patch {
+	addr: 0x02440 + 3,
+	before: &[0x9f, 0xff],
+	after: &[0xfc, 0x2f],
+    },
+    Patch {
+	addr: 0x0246e + 3,
+	before: &[0x9f, 0xff],
+	after: &[0xfc, 0x2f],
+    },
+    Patch {
+	addr: 0x321c6 + 3,
+	before: &[0x20, 0x00],
+	after: &[0x00, 0x10],
+    },
+    Patch {
+	addr: 0x32304 + 3,
+	before: &[0x9f, 0xff],
+	after: &[0xfc, 0x2f],
+    },
+    // Patches for SCC write
+    Patch {
+	addr: 0x00562 + 3,
+	before: &[0xbf, 0xff],
+	after: &[0xfc, 0x3f],
+    },
+    Patch {
+	addr: 0x00598 + 3,
+	before: &[0xbf, 0xff],
+	after: &[0xfc, 0x3f],
+    },
+    Patch {
+	addr: 0x02308 + 3,
+	before: &[0xbf, 0xff],
+	after: &[0xfc, 0x3f],
+    },
+    Patch {
+	addr: 0x02322 + 3,
+	before: &[0xbf, 0xff],
+	after: &[0xfc, 0x3f],
+    },
+    Patch {
+	addr: 0x02422 + 3,
+	before: &[0xbf, 0xff],
+	after: &[0xfc, 0x3f],
+    },
+    Patch {
+	addr: 0x02432 + 3,
+	before: &[0xbf, 0xff],
+	after: &[0xfc, 0x3f],
+    },
+    Patch {
+	addr: 0x02450 + 3,
+	before: &[0xbf, 0xff],
+	after: &[0xfc, 0x3f],
+    },
+    Patch {
+	addr: 0x3230a + 3,
+	before: &[0xbf, 0xff],
+	after: &[0xfc, 0x3f],
+    },
     // Patches to get around the 8MB limit on memory zones.
     Patch {
 	addr: 0x0a4c0 + 3,
@@ -563,7 +655,7 @@ const ROM_PATCHES: [Patch; 27] = [
     Patch {
 	addr: 0x0267e,
 	before: &[0x40],
-	after: &[0x90],
+	after: &[0xd0],
     },
 ];
 
