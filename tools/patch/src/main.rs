@@ -265,6 +265,36 @@ const PTCH_34_PATCHES: [Patch; 4] = [
     },
 ];
 
+const PTCH_117_PATCHES: [Patch; 2] = [
+    // SCC read
+    Patch {
+        addr: 0x4362 + 3,
+        before: &[0x9f, 0xff],
+        after: &[0xfc, 0x2f],
+    },
+    // SCC write
+    Patch {
+        addr: 0x4368 + 3,
+        before: &[0xbf, 0xff],
+        after: &[0xfc, 0x3f],
+    },
+];
+
+const PTCH_630_PATCHES: [Patch; 2] = [
+    // SCC read
+    Patch {
+        addr: 0x36DA + 3,
+        before: &[0x9f, 0xff],
+        after: &[0xfc, 0x2f],
+    },
+    // SCC write
+    Patch {
+        addr: 0x36E0 + 3,
+        before: &[0xbf, 0xff],
+        after: &[0xfc, 0x3f],
+    },
+];
+
 const CACH_1_PATCHES: [Patch; 2] = [
     Patch {
         addr: 0x58,
@@ -294,8 +324,8 @@ const PTCH_3_PATCHES: [Patch; 2] = [
 struct ResourcePatch {
     res_type: &'static str,
     res_id: i16,
-    // If none, apply immediate operand patches.
-    patches: Option<&'static [Patch<'static>]>,
+    patch_imm_ops: bool,
+    patches: &'static [Patch<'static>],
     length: usize,
     // Used for finding the ROM on-disk.
     prefix: &'static [u8],
@@ -313,18 +343,18 @@ impl ResourcePatch {
     fn patch_data(&self, data: &mut [u8]) {
         let patches = build_op_patches(&OP_PREFIXES, &ADDR_SUFFIXES);
 
-        if let Some(patches) = self.patches {
-            // Specfic patches
-            for (idx, patch) in patches.iter().enumerate() {
-                println!("Applying patch #{}: {:?}", idx, patch);
-                patch.apply(data);
-            }
-        } else {
-            // Generic immediate operand patches.
+        // Generic immediate operand patches.
+        if self.patch_imm_ops {
             for (idx, patch) in patches.iter().enumerate() {
                 println!("Applying patch #{}: {:?}", idx, patch.to_pattern_patch());
                 patch.apply(data);
             }
+        }
+
+        // Specfic patches
+        for (idx, patch) in self.patches.iter().enumerate() {
+            println!("Applying patch #{}: {:?}", idx, patch);
+            patch.apply(data);
         }
     }
 }
@@ -333,42 +363,48 @@ const RESOURCE_PATCHES: [ResourcePatch; 6] = [
     ResourcePatch {
         res_type: "boot",
         res_id: 1,
-        patches: Some(&BOOT_1_PATCHES),
+        patch_imm_ops: false,
+        patches: &BOOT_1_PATCHES,
         length: 0x404,
         prefix: &[0x4c, 0x4b, 0x60, 0x00],
     },
     ResourcePatch {
         res_type: "ptch",
         res_id: 34,
-        patches: Some(&PTCH_34_PATCHES),
+        patch_imm_ops: false,
+        patches: &PTCH_34_PATCHES,
         length: 0x772,
         prefix: &[0x60, 0x00, 0x06, 0xe6],
     },
     ResourcePatch {
         res_type: "PTCH",
         res_id: 117,
-        patches: None,
+        patch_imm_ops: true,
+        patches: &PTCH_117_PATCHES,
         length: 0x4a48,
         prefix: &[0x60, 0x00, 0x44, 0xA2],
     },
     ResourcePatch {
         res_type: "PTCH",
         res_id: 630,
-        patches: None,
+        patch_imm_ops: true,
+        patches: &PTCH_630_PATCHES,
         length: 0x41e0,
         prefix: &[0x60, 0x00, 0x03c, 0xce],
     },
     ResourcePatch {
         res_type: "CACH",
         res_id: 1,
-        patches: Some(&CACH_1_PATCHES),
+        patch_imm_ops: false,
+        patches: &CACH_1_PATCHES,
         length: 0xb86,
         prefix: &[0x60, 0x00, 0x07, 0xA4],
     },
     ResourcePatch {
         res_type: "ptch",
         res_id: 3,
-        patches: Some(&PTCH_3_PATCHES),
+        patch_imm_ops: false,
+        patches: &PTCH_3_PATCHES,
         length: 0x1ab8,
         prefix: &[0x60, 0x00, 0x1A, 0xA4],
     },
@@ -399,17 +435,22 @@ fn patch_disk_601() -> anyhow::Result<()> {
 
     for patch in RESOURCE_PATCHES.iter() {
         println!("Patching {} {}", patch.res_type, patch.res_id);
-        let idx = find_resource(patch.prefix, patch.res_type, patch.res_id, &patchable_data)?;
+        let idx = find_resource(patch.prefix, patch.res_type, patch.res_id, patchable_data)?;
         patch.patch_data(&mut patchable_data[idx..][..patch.length]);
     }
 
     // And let's patch the boot sector while we're at it.
     {
-	let boot_data = &mut data[..0x10000];
-	let boot_patch = &RESOURCE_PATCHES[0];
-	assert_eq!(boot_patch.res_type, "boot");
-	assert_eq!(boot_patch.res_id, 1);
-        let idx = find_resource(boot_patch.prefix, boot_patch.res_type, boot_patch.res_id, &boot_data)?;
+        let boot_data = &mut data[..0x10000];
+        let boot_patch = &RESOURCE_PATCHES[0];
+        assert_eq!(boot_patch.res_type, "boot");
+        assert_eq!(boot_patch.res_id, 1);
+        let idx = find_resource(
+            boot_patch.prefix,
+            boot_patch.res_type,
+            boot_patch.res_id,
+            boot_data,
+        )?;
         boot_patch.patch_data(&mut boot_data[idx..][..boot_patch.length]);
     }
 
@@ -421,7 +462,7 @@ fn patch_disk_601() -> anyhow::Result<()> {
 // ROM patching.
 //
 
-const ROM_PATCHES: [Patch; 45] = [
+const ROM_PATCHES: [Patch; 57] = [
     // Patch debug hooks from 0xf8XXXX to 0xfcXXXX, to avoid ROM
     // clash.
     Patch {
@@ -518,144 +559,206 @@ const ROM_PATCHES: [Patch; 45] = [
     },
     // Patch location of SCSI HW.
     Patch {
-	addr: 0x004b4 + 3,
-	before: &[0x5f, 0xf0],
-	after: &[0xfc, 0x10],
+        addr: 0x004b4 + 3,
+        before: &[0x5f, 0xf0],
+        after: &[0xfc, 0x10],
     },
     Patch {
-	addr: 0x01c74 + 3,
-	before: &[0x5f, 0xf0],
-	after: &[0xfc, 0x10],
+        addr: 0x01c74 + 3,
+        before: &[0x5f, 0xf0],
+        after: &[0xfc, 0x10],
     },
     Patch {
-	addr: 0x004bc + 3,
-	before: &[0x5f, 0xf2],
-	after: &[0xfc, 0x12],
+        addr: 0x004bc + 3,
+        before: &[0x5f, 0xf2],
+        after: &[0xfc, 0x12],
     },
     Patch {
-	addr: 0x004c4 + 3,
-	before: &[0x5f, 0xf2],
-	after: &[0xfc, 0x12],
+        addr: 0x004c4 + 3,
+        before: &[0x5f, 0xf2],
+        after: &[0xfc, 0x12],
     },
     Patch {
-	addr: 0x004ce + 3,
-	before: &[0x5f, 0xf0],
-	after: &[0xfc, 0x10],
+        addr: 0x004ce + 3,
+        before: &[0x5f, 0xf0],
+        after: &[0xfc, 0x10],
     },
     // Patches for SCC read
     Patch {
-	addr: 0x00478 + 3,
-	before: &[0x9f, 0xff],
-	after: &[0xfc, 0x2f],
+        addr: 0x00478 + 3,
+        before: &[0x9f, 0xff],
+        after: &[0xfc, 0x2f],
     },
     Patch {
-	addr: 0x0056a + 3,
-	before: &[0x9f, 0xff],
-	after: &[0xfc, 0x2f],
+        addr: 0x0056a + 3,
+        before: &[0x9f, 0xff],
+        after: &[0xfc, 0x2f],
     },
     Patch {
-	addr: 0x0059e + 3,
-	before: &[0x9f, 0xff],
-	after: &[0xfc, 0x2f],
+        addr: 0x0059e + 3,
+        before: &[0x9f, 0xff],
+        after: &[0xfc, 0x2f],
     },
     Patch {
-	addr: 0x022f6 + 3,
-	before: &[0x9f, 0xff],
-	after: &[0xfc, 0x2f],
+        addr: 0x022f6 + 3,
+        before: &[0x9f, 0xff],
+        after: &[0xfc, 0x2f],
     },
     Patch {
-	addr: 0x02312 + 3,
-	before: &[0x9f, 0xff],
-	after: &[0xfc, 0x2f],
+        addr: 0x02312 + 3,
+        before: &[0x9f, 0xff],
+        after: &[0xfc, 0x2f],
     },
     Patch {
-	addr: 0x02336 + 3,
-	before: &[0x9f, 0xff],
-	after: &[0xfc, 0x2f],
+        addr: 0x02336 + 3,
+        before: &[0x9f, 0xff],
+        after: &[0xfc, 0x2f],
     },
     Patch {
-	addr: 0x02440 + 3,
-	before: &[0x9f, 0xff],
-	after: &[0xfc, 0x2f],
+        addr: 0x02440 + 3,
+        before: &[0x9f, 0xff],
+        after: &[0xfc, 0x2f],
     },
     Patch {
-	addr: 0x0246e + 3,
-	before: &[0x9f, 0xff],
-	after: &[0xfc, 0x2f],
+        addr: 0x0246e + 3,
+        before: &[0x9f, 0xff],
+        after: &[0xfc, 0x2f],
     },
     Patch {
-	addr: 0x321c6 + 3,
-	before: &[0x20, 0x00],
-	after: &[0x00, 0x10],
+        addr: 0x321c6 + 3,
+        before: &[0x20, 0x00],
+        after: &[0x00, 0x10],
     },
     Patch {
-	addr: 0x32304 + 3,
-	before: &[0x9f, 0xff],
-	after: &[0xfc, 0x2f],
+        addr: 0x32304 + 3,
+        before: &[0x9f, 0xff],
+        after: &[0xfc, 0x2f],
     },
     // Patches for SCC write
     Patch {
-	addr: 0x00562 + 3,
-	before: &[0xbf, 0xff],
-	after: &[0xfc, 0x3f],
+        addr: 0x00562 + 3,
+        before: &[0xbf, 0xff],
+        after: &[0xfc, 0x3f],
     },
     Patch {
-	addr: 0x00598 + 3,
-	before: &[0xbf, 0xff],
-	after: &[0xfc, 0x3f],
+        addr: 0x00598 + 3,
+        before: &[0xbf, 0xff],
+        after: &[0xfc, 0x3f],
     },
     Patch {
-	addr: 0x02308 + 3,
-	before: &[0xbf, 0xff],
-	after: &[0xfc, 0x3f],
+        addr: 0x02308 + 3,
+        before: &[0xbf, 0xff],
+        after: &[0xfc, 0x3f],
     },
     Patch {
-	addr: 0x02322 + 3,
-	before: &[0xbf, 0xff],
-	after: &[0xfc, 0x3f],
+        addr: 0x02322 + 3,
+        before: &[0xbf, 0xff],
+        after: &[0xfc, 0x3f],
     },
     Patch {
-	addr: 0x02422 + 3,
-	before: &[0xbf, 0xff],
-	after: &[0xfc, 0x3f],
+        addr: 0x02422 + 3,
+        before: &[0xbf, 0xff],
+        after: &[0xfc, 0x3f],
     },
     Patch {
-	addr: 0x02432 + 3,
-	before: &[0xbf, 0xff],
-	after: &[0xfc, 0x3f],
+        addr: 0x02432 + 3,
+        before: &[0xbf, 0xff],
+        after: &[0xfc, 0x3f],
     },
     Patch {
-	addr: 0x02450 + 3,
-	before: &[0xbf, 0xff],
-	after: &[0xfc, 0x3f],
+        addr: 0x02450 + 3,
+        before: &[0xbf, 0xff],
+        after: &[0xfc, 0x3f],
     },
     Patch {
-	addr: 0x3230a + 3,
-	before: &[0xbf, 0xff],
-	after: &[0xfc, 0x3f],
+        addr: 0x3230a + 3,
+        before: &[0xbf, 0xff],
+        after: &[0xfc, 0x3f],
+    },
+    // Patches for IWM
+    Patch {
+        addr: 0x004e6 + 3,
+        before: &[0xdf, 0xe1],
+        after: &[0xfc, 0x41],
+    },
+    Patch {
+        addr: 0x004f0 + 3,
+        before: &[0xdf, 0xe1],
+        after: &[0xfc, 0x41],
+    },
+    Patch {
+        addr: 0x0109a + 3,
+        before: &[0xdf, 0xf1],
+        after: &[0xfc, 0x51],
+    },
+    Patch {
+        addr: 0x01c86 + 3,
+        before: &[0xdf, 0xe1],
+        after: &[0xfc, 0x41],
+    },
+    // Patches for VIA
+    Patch {
+        addr: 0x00422 + 3,
+        before: &[0xef, 0xe1],
+        after: &[0xfc, 0x61],
+    },
+    Patch {
+        addr: 0x00520 + 3,
+        before: &[0xef, 0xe1],
+        after: &[0xfc, 0x61],
+    },
+    Patch {
+        addr: 0x0052a + 3,
+        before: &[0xef, 0xe1],
+        after: &[0xfc, 0x61],
+    },
+    Patch {
+        addr: 0x0054e + 3,
+        before: &[0xef, 0xe1],
+        after: &[0xfc, 0x61],
+    },
+    Patch {
+        addr: 0x0a2c4 + 3,
+        before: &[0xef, 0xe1],
+        after: &[0xfc, 0x61],
+    },
+    Patch {
+        addr: 0x36d2e + 3,
+        before: &[0xef, 0xff],
+        after: &[0xfc, 0x7f],
+    },
+    Patch {
+        addr: 0x36d42 + 3,
+        before: &[0xef, 0xff],
+        after: &[0xfc, 0x7f],
+    },
+    Patch {
+        addr: 0x36d6c + 5,
+        before: &[0xef, 0xe1],
+        after: &[0xfc, 0x61],
     },
     // Patches to get around the 8MB limit on memory zones.
     Patch {
-	addr: 0x0a4c0 + 3,
-	before: &[0x80],
-	after: &[0xfc],
+        addr: 0x0a4c0 + 3,
+        before: &[0x80],
+        after: &[0xfc],
     },
     Patch {
-	addr: 0x0a550 + 3,
-	before: &[0x80],
-	after: &[0xfc],
+        addr: 0x0a550 + 3,
+        before: &[0x80],
+        after: &[0xfc],
     },
     Patch {
-	addr: 0x0a9ae + 3,
-	before: &[0x80],
-	after: &[0xfc],
+        addr: 0x0a9ae + 3,
+        before: &[0x80],
+        after: &[0xfc],
     },
     // Patch for maximum amount of memory that can be installed in the
     // machine.
     Patch {
-	addr: 0x0267e,
-	before: &[0x40],
-	after: &[0xd0],
+        addr: 0x0267e,
+        before: &[0x40],
+        after: &[0xf8],
     },
 ];
 
@@ -683,6 +786,14 @@ const ROM_ARRAY_PATCHES: [ArrayPatch; 3] = [
     },
 ];
 
+const ROM_PATTERN_PATCHES: [PatternPatch; 1] = [
+    // Patch LEA (0xefe1XXXX), XX for VIA
+    PatternPatch {
+        pattern: &[0xf9, 0x00, 0xef, 0xe1],
+        replacement: &[0xf9, 0x00, 0xfc, 0x61],
+    },
+];
+
 fn patch_rom() -> anyhow::Result<()> {
     let mut data = fs::read("../../ROM.sefdhd")?;
 
@@ -693,6 +804,11 @@ fn patch_rom() -> anyhow::Result<()> {
 
     for (idx, patch) in ROM_ARRAY_PATCHES.iter().enumerate() {
         println!("Applying array patch #{}: {:?}", idx, patch);
+        patch.apply(&mut data);
+    }
+
+    for (idx, patch) in ROM_PATTERN_PATCHES.iter().enumerate() {
+        println!("Applying pattern patch #{}: {:?}", idx, patch);
         patch.apply(&mut data);
     }
 

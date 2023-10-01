@@ -92,17 +92,48 @@ See also NOTES.md.
    * It looks like these references are before we know how much RAM
      there is, any it relies on mirroring if there's <4MB to hit the
      top end of whatever RAM is available.
+ * Assumption that 8MB is the largest value you'll ever want to deal
+   with in RAM is marked with "8MB allocation limit".
+
+### Remapped memory
+
+ * 0xf80000-0xfbffff ROM
+ * 0xfc0000-0xfc0007 HW debug stuff
+ * 0xfc1000-0xfc127f SCSI
+ * 0xfc2000-0xfc2fff SCC read
+ * 0xfc3000-0xfc3fff SCC write
+ * 0xfc4000-0xfc5fff IWM
+ * 0xfc6000-0xfc7fff VIA
+
+The assumption that the largest possible allocation is 0x00800000
+(8MB) is replaced with 0x00FC0000 (15.75MB), which is larger than the
+maximum amount of RAM I intend to support.
 
 ### Memory map
 
  * 0x000000-0x400000 RAM
  * 0x400000-0x440000 ROM
+   * References to absoulute ROM addresses from both ROM and
+     System. Stored in 0xc00, 0xc04, 0xc08. Later two only referenced
+     by System patches?
  * 0x580000-0x600000 SCSI
+   * Used for HD. Referenced via base of 0x5f0000. Uses A4-A6. ROM
+     references absolute address.
  * 0x900000-0xA00000 SCC read
+   * Z8530 for serial ports. Referenced via 0x9f0000. ROM and System
+     references.
  * 0xA00000-0xB00000 Reserved
+   * I'm going to pretend this doesn't exist!
  * 0xB00000-0xC00000 SCC write
+   * Other part of Z8530
  * 0xD00000-0xE00000 IWM
+   * Floppy disk drive, ROM references absolute address
  * 0xE80000-0xF00000 VIA
+   * Rockwell or VTI 6522 / 6523, used for ADB & RTC. ROM references
+     absolute address.
+
+Other hardware devices include the video display, sound, and interrupt
+switch.
 
 ### Misc
 
@@ -120,7 +151,10 @@ screen buffer. Main and alternate screen buffer controlled by a bit in
 the VIA. Video buffers are ScrnBase and ScrnBase - 0x8000. Not all
 models have alternate screen buffer!
 
-TODO: ROM overlay in chapter 6.
+TODO: ROM overlay in chapter 6 of the HW guide.
+
+Could potentially borrow the pinout from the Mac's backplane
+assignment for my hardware implementation.
 
 ## References
 
